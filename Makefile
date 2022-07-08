@@ -55,6 +55,9 @@ tb_top.vvp:	tb/tb_top.v
 tb_comp_video_timing.vvp:	tb/tb_comp_video_timing.v
 	$(IVERILOG) $(IVOPTS) $(IVPATHS) -o $@ $^
 
+tb_comp_spir.vvp:	tb/tb_comp_spir.v
+	$(IVERILOG) $(IVOPTS) $(IVPATHS) -o $@ $^
+
 
 ################################################################################
 
