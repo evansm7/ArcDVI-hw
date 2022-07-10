@@ -83,15 +83,89 @@ module vidc_capture(input wire 	       	      clk,
     * a 1 stage deeper pipeline, i.e. "further back in time".
     */
 
-   /* These registers mirror the VIDC registers (64 words of).
+   /* VIDC register mirrors, as per datasheet names.
     *
-    * Our special "port" register is at register offset 0x50/51
+    * Our special "port" register is at register offset 0x50/54
     * (i.e. reg 0x14/0x15).
     * VIDC decodes this, harmlessly, to the border reg & cursor col1 reg.
     */
-   reg [23:0]           vidc_regs[63:0];
+   reg [11:0]                                 vidc_VPLC[15:0];	 // Palette/colours ignore supremacy bit
+   reg [11:0]                                 vidc_BCR;
+   reg [11:0]                                 vidc_CPLC1;
+   reg [11:0]                                 vidc_CPLC2;
+   reg [11:0]                                 vidc_CPLC3;
 
-   assign vidc_reg_rdata 	= vidc_regs[vidc_reg_sel][23:0];
+   reg [23:0]                                 vidc_special0;
+   reg [23:0]                                 vidc_special1;
+
+   reg [2:0]                                  vidc_SIR[7:0];
+
+   reg [9:0]                                  vidc_HCR;
+   reg [9:0]                                  vidc_HSWR;
+   reg [9:0]                                  vidc_HBSR;
+   reg [9:0]                                  vidc_HDSR;
+   reg [9:0]                                  vidc_HDER;
+   reg [9:0]                                  vidc_HBER;
+   reg [12:0]                                 vidc_HCSR;
+   reg [9:0]                                  vidc_HIR;
+
+   reg [9:0]                                  vidc_VCR;
+   reg [9:0]                                  vidc_VSWR;
+   reg [9:0]                                  vidc_VBSR;
+   reg [9:0]                                  vidc_VDSR;
+   reg [9:0]                                  vidc_VDER;
+   reg [9:0]                                  vidc_VBER;
+   reg [9:0]                                  vidc_VCSR;
+   reg [9:0]                                  vidc_VCER;
+
+   reg [8:0]                                  vidc_SFR; // Including test bit8
+   reg [10:0]                                 vidc_CR;  // Compacted, 13:9 removed
+
+   // Register reads (to MCU):
+   reg [31:0]                                 rdata; // wire
+
+   always @(*) begin
+      rdata = 0;
+
+      casez (vidc_reg_sel)
+        6'b00????:		rdata = {12'h0, vidc_VPLC[vidc_reg_sel[3:0]]};
+        6'b010000:		rdata = {12'h0, vidc_BCR};
+        6'b010001:		rdata = {12'h0, vidc_CPLC1};
+        6'b010010:		rdata = {12'h0, vidc_CPLC2};
+        6'b010011:		rdata = {12'h0, vidc_CPLC3};
+        6'b010100:		rdata = vidc_special0;
+        6'b010101:		rdata = vidc_special1;
+
+        6'b011000:		rdata = {21'h0, vidc_SIR[7]};
+        6'b011001:		rdata = {21'h0, vidc_SIR[0]};
+        6'b011010:		rdata = {21'h0, vidc_SIR[1]};
+        6'b011011:		rdata = {21'h0, vidc_SIR[2]};
+        6'b011100:		rdata = {21'h0, vidc_SIR[3]};
+        6'b011101:		rdata = {21'h0, vidc_SIR[4]};
+        6'b011110:		rdata = {21'h0, vidc_SIR[5]};
+        6'b011111:		rdata = {21'h0, vidc_SIR[6]};
+        6'b100000:		rdata = {vidc_HCR, 14'h0};
+        6'b100001:		rdata = {vidc_HSWR, 14'h0};
+        6'b100010:		rdata = {vidc_HBSR, 14'h0};
+        6'b100011:		rdata = {vidc_HDSR, 14'h0};
+        6'b100100:		rdata = {vidc_HDER, 14'h0};
+        6'b100101:		rdata = {vidc_HBER, 14'h0};
+        6'b100110:		rdata = {vidc_HCSR, 11'h0};
+        6'b100111:		rdata = {vidc_HIR, 14'h0};
+        6'b101000:		rdata = {vidc_VCR, 14'h0};
+        6'b101001:		rdata = {vidc_VSWR, 14'h0};
+        6'b101010:		rdata = {vidc_VBSR, 14'h0};
+        6'b101011:		rdata = {vidc_VDSR, 14'h0};
+        6'b101100:		rdata = {vidc_VDER, 14'h0};
+        6'b101101:		rdata = {vidc_VBER, 14'h0};
+        6'b101110:		rdata = {vidc_VCSR, 14'h0};
+        6'b101111:		rdata = {vidc_VCER, 14'h0};
+        6'b110000:		rdata = {15'h0, vidc_SFR};
+
+        6'b111000:		rdata = {8'h0, vidc_CR[10:9], 5'b00000, vidc_CR[8:0]};
+      endcase // case (vidc_reg_sel)
+   end
+   assign vidc_reg_rdata 	= rdata;
 
 
    ////////////////////////////////////////////////////////////////////////////////
@@ -102,14 +176,15 @@ module vidc_capture(input wire 	       	      clk,
    wire                 nvidw_edge          = (vidc_nvidw_hist[2] == 1) &&
                         (vidc_nvidw_hist[1] == 0);
 
-   wire	[5:0]		vidc_reg_addr       = vidc_d_hist[1][31:26];
+   wire [5:0]           vidc_regw_addr      = vidc_d_hist[1][31:26];
+   wire [23:0]          vidc_regw_data      = vidc_d_hist[1][23:0];
 
    /* Detect changes to display timing:
     * This isn't foolproof, testing only HCR/VCR, but is enough to detect a
     * standard OS-driven mode change.
     */
-   wire                 tregs               = (vidc_reg_addr == 8'h80/4) ||
-                        (vidc_reg_addr == 8'ha0/4);
+   wire                 tregs               = (vidc_regw_addr == 8'h80/4) ||
+                        (vidc_regw_addr == 8'ha0/4);
 
    always @(posedge clk) begin
            if (reset) begin
@@ -130,12 +205,53 @@ module vidc_capture(input wire 	       	      clk,
                    vidc_d_hist[1] <= vidc_d_hist[0];
                    vidc_d_hist[2] <= vidc_d_hist[1];
 
+                   /* vidc_d_hist[1] (vidc_regw_data) is data sampled
+                    * at same point as the strobe which has been
+                    * detected as being low.
+                    */
                    if (nvidw_edge) begin
-                           /* vidc_d_hist[1] is data sampled at same point as the
-                            * strobe which has been detected as being low.
-                            */
-                           vidc_regs[vidc_reg_addr] <= vidc_d_hist[1][23:0];
-                           vidc_special_written     <= (vidc_reg_addr == 6'h14);
+                           casez (vidc_regw_addr)
+                             6'b00????:	vidc_VPLC[vidc_regw_addr[3:0]] <= vidc_regw_data[11:0];
+                             6'b010000:	vidc_BCR	<= vidc_regw_data[11:0];
+                             6'b010001:	vidc_CPLC1	<= vidc_regw_data[11:0];
+                             6'b010010:	vidc_CPLC2 	<= vidc_regw_data[11:0];
+                             6'b010011:	vidc_CPLC3	<= vidc_regw_data[11:0];
+                             6'b010100:	vidc_special0	<= vidc_regw_data[23:0];
+                             6'b010101:	vidc_special1	<= vidc_regw_data[23:0];
+
+                             6'b011000:	vidc_SIR[7]	<= vidc_regw_data[2:0];
+                             6'b011001:	vidc_SIR[0]	<= vidc_regw_data[2:0];
+                             6'b011010:	vidc_SIR[1]	<= vidc_regw_data[2:0];
+                             6'b011011:	vidc_SIR[2]	<= vidc_regw_data[2:0];
+                             6'b011100:	vidc_SIR[3]	<= vidc_regw_data[2:0];
+                             6'b011101:	vidc_SIR[4]	<= vidc_regw_data[2:0];
+                             6'b011110:	vidc_SIR[5]	<= vidc_regw_data[2:0];
+                             6'b011111:	vidc_SIR[6]	<= vidc_regw_data[2:0];
+                             6'b100000:	vidc_HCR	<= vidc_regw_data[23:14];
+                             6'b100001:	vidc_HSWR	<= vidc_regw_data[23:14];
+                             6'b100010:	vidc_HBSR	<= vidc_regw_data[23:14];
+                             6'b100011:	vidc_HDSR	<= vidc_regw_data[23:14];
+                             6'b100100:	vidc_HDER	<= vidc_regw_data[23:14];
+                             6'b100101:	vidc_HBER	<= vidc_regw_data[23:14];
+                             6'b100110:	vidc_HCSR	<= vidc_regw_data[23:11];
+                             6'b100111:	vidc_HIR	<= vidc_regw_data[23:14];
+                             6'b101000:	vidc_VCR	<= vidc_regw_data[23:14];
+                             6'b101001:	vidc_VSWR	<= vidc_regw_data[23:14];
+                             6'b101010:	vidc_VBSR	<= vidc_regw_data[23:14];
+                             6'b101011:	vidc_VDSR	<= vidc_regw_data[23:14];
+                             6'b101100:	vidc_VDER	<= vidc_regw_data[23:14];
+                             6'b101101:	vidc_VBER	<= vidc_regw_data[23:14];
+                             6'b101110:	vidc_VCSR	<= vidc_regw_data[23:14];
+                             6'b101111:	vidc_VCER	<= vidc_regw_data[23:14];
+                             6'b110000:	vidc_SFR	<= vidc_regw_data[8:0];
+
+                             6'b111000: begin
+	                        vidc_CR[10:9] 		<= vidc_regw_data[15:14];
+                                vidc_CR[8:0]		<= vidc_regw_data[8:0];
+                             end
+                           endcase // case (vidc_reg_sel)
+
+                           vidc_special_written      <= (vidc_regw_addr == 6'h14);
 
                            if (tregs && (tregs_status_ack == tregs_status))
                              tregs_status <= ~tregs_status;
@@ -149,27 +265,24 @@ module vidc_capture(input wire 	       	      clk,
    ////////////////////////////////////////////////////////////////////////////////
    // Registers to export directly to display circuitry:
 
-   assign vidc_cursor_hstart         	= conf_hires ? vidc_regs[6'h26][21:11] :
-                                          vidc_regs[6'h26][23:13];
-   wire [9:0] vidc_vstart    		= vidc_regs[6'h2b][23:14];
-   assign vidc_cursor_vstart 		= vidc_regs[6'h2e][23:14] - vidc_vstart;
-   assign vidc_cursor_vend 		= vidc_regs[6'h2f][23:14] - vidc_vstart;
+   assign vidc_cursor_hstart         	= conf_hires ? vidc_HCSR[10:0] : vidc_HCSR[12:2];
+   assign vidc_cursor_vstart 		= vidc_VCSR - vidc_VDSR;
+   assign vidc_cursor_vend 		= vidc_VCER - vidc_VDSR;
 
-   assign vidc_palette  		= { vidc_regs[15][11:0], vidc_regs[14][11:0],
-                                            vidc_regs[13][11:0], vidc_regs[12][11:0],
-                                            vidc_regs[11][11:0], vidc_regs[10][11:0],
-                                            vidc_regs[9][11:0], vidc_regs[8][11:0],
-                                            vidc_regs[7][11:0], vidc_regs[6][11:0],
-                                            vidc_regs[5][11:0], vidc_regs[4][11:0],
-                                            vidc_regs[3][11:0], vidc_regs[2][11:0],
-                                            vidc_regs[1][11:0], vidc_regs[0][11:0] };
+   assign vidc_palette  		= { vidc_VPLC[15], vidc_VPLC[14],
+                                            vidc_VPLC[13], vidc_VPLC[12],
+                                            vidc_VPLC[11], vidc_VPLC[10],
+                                            vidc_VPLC[9], vidc_VPLC[8],
+                                            vidc_VPLC[7], vidc_VPLC[6],
+                                            vidc_VPLC[5], vidc_VPLC[4],
+                                            vidc_VPLC[3], vidc_VPLC[2],
+                                            vidc_VPLC[1], vidc_VPLC[0] };
 
-   assign vidc_cursor_palette 		= { vidc_regs[19][11:0], vidc_regs[18][11:0],
-                                            vidc_regs[17][11:0] };
+   assign vidc_cursor_palette 		= { vidc_CPLC3, vidc_CPLC2, vidc_CPLC1 };
 
    // When vidc_special is changed, vidc_special_written pulses:
-   assign        vidc_special	 	= vidc_regs[6'h14];
-   assign        vidc_special_data  	= vidc_regs[6'h15];
+   assign        vidc_special	 	= vidc_special0;
+   assign        vidc_special_data  	= vidc_special1;
 
 
    ////////////////////////////////////////////////////////////////////////////////
