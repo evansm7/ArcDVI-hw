@@ -60,7 +60,7 @@ module video(input wire		      clk,
 
              // Pixel/shift clock-related signals
              input wire               clk_pixel,
-             input wire               clk_shift,
+
              // Video data output:
              output wire [7:0]        video_r,
              output wire [7:0]        video_g,
@@ -68,6 +68,7 @@ module video(input wire		      clk,
              output wire              video_hsync,
              output wire              video_vsync,
              output wire              video_blank,
+             output wire              video_de,
 
              // DMA clock-related signals
              input wire               enable_test_card,
@@ -229,6 +230,7 @@ module video(input wire		      clk,
                     .o_hsync(video_hsync),
                     .o_vsync(video_vsync),
                     .o_blank(video_blank),
+                    .o_de(video_de),
 
                     .load_dma_clk(clk),
                     .load_dma(load_dma),
