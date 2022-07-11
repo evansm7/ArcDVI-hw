@@ -182,18 +182,25 @@ module video_timing(input wire        	     pclk,
    ////////////////////////////////////////////////////////////////////////////////
    // Cursor buffer:
 
-   /* Don't need double-buffering, because 4 beats (16 bytes) of cursor data is loaded
-    * every other line, before the cursor is displayed.
+   /* 4 beats (16 bytes) of cursor data is loaded every other line, starting at the first
+    * line that the cursor is displayed.
+    *
+    * Two such transfers (4 Arc lines worth) are buffered, because for line-doubled modes
+    * the buffers start getting overwritten before the previous lines are done.
+    *
+    * For example, consider the output runs one Arc-line behind input, meaning it's 2
+    * output lines behind.  As arc line 2 is being DMA'd (overwriting cursor data loaded
+    * at line 0 for lines 0+1), line 1 is still being output.
     */
-   reg [31:0] 	cursor_buffer[3:0];	// Need to store 4 beats from hsync time
-   reg [1:0]  	cursor_w_ptr;
+   reg [31:0] 	cursor_buffer[7:0];	// Need to store 4 beats from hsync time, twice
+   reg [2:0]  	cursor_w_ptr;
 
    always @(posedge load_dma_clk) begin
            if (flyback_falling2) begin
                    /* At frame start, reset to beginning of buffer 0: */
                    cursor_w_ptr <= 0;
            end else if (load_dma_cursor) begin
-                   if (cursor_w_ptr == 3)
+                   if (cursor_w_ptr == 7)
                      cursor_w_ptr <= 0;
                    else
                      cursor_w_ptr <= cursor_w_ptr + 1;
@@ -264,11 +271,11 @@ module video_timing(input wire        	     pclk,
                                   ti_h_disp_start;
                    cursor_xend <= (double_x ? {v_cursor_x, 1'b0} : v_cursor_x) +
                                   ti_h_disp_start + (double_x ? 64 : 32);
-                   // The y coordinate is the py value before the cursor start/end line:
-                   cursor_y    <= (double_y ? {v_cursor_y, 1'b0} : v_cursor_y) +
-                                  ti_v_disp_start;
+                   // The y coordinate is the py value before the cursor start/end line (i.e. minus 1):
+                   cursor_y    <= (double_y ? ({v_cursor_y, 1'b0}) : v_cursor_y) +
+                                  ti_v_disp_start - 1;
                    cursor_yend <= (double_y ? {v_cursor_yend, 1'b0} : v_cursor_yend) +
-                                  ti_v_disp_start;
+                                  ti_v_disp_start - 1;
            end
    end
 
@@ -451,40 +458,50 @@ module video_timing(input wire        	     pclk,
    // This logic culminates in this signal, valid aligned with hsync_delayed3 et al:
    reg [1:0]    cursor_pixel3;
 
+   /* This is slightly contorted, and not necessarily for good reason.
+    * We track the offset of the output pixel relative to (0,0) cursor TL, and use
+    * that to index the word in the DMA buffer and pixel in word, below.
+    * The indices are scaled down when in doubled modes, because the counts are now
+    * too big.
+    */
    always @(posedge pclk) begin
-           if (px == ti_h_total && py == ti_v_total) begin
-                   on_cursor_x   <= 0;
-                   on_cursor_y   <= 0;
-           end else begin
-                   if (py == cursor_y) begin
-                           internal_cursor_disp_y <= 0;
-                           on_cursor_y <= 1;
-                   end
-                   if (py == cursor_yend) begin
-                           on_cursor_y <= 0;
-                   end
-                   if (px == cursor_x) begin
-                           internal_cursor_disp_x <= 0;
-                           on_cursor_x   <= 1;
-                   end
-                   if (px == cursor_xend) begin
-                           on_cursor_x   <= 0;
-                           if (on_cursor_y)
-                             internal_cursor_disp_y <= internal_cursor_disp_y + 1;
-                   end
+      if (px == ti_h_total && py == ti_v_total) begin
+         on_cursor_x   <= 0;
+         on_cursor_y   <= 0;
+      end else begin
+         /* At the end of a display line, init or increment cursor Y coordinate: */
+         if (px == ti_h_total) begin
+            /* Last assignment wins */
+            internal_cursor_disp_y <= internal_cursor_disp_y + 1;
+            if (py == cursor_y) begin
+               internal_cursor_disp_y 	<= 0;
+               on_cursor_y            	<= 1;
+            end
+            /* NOTE: this can be the same line, e.g. for cursor-off end = start! */
+            if (py == cursor_yend) begin
+               on_cursor_y 	   	<= 0;
+            end
+         end
 
-                   if (on_cursor_x)
-                     internal_cursor_disp_x <= internal_cursor_disp_x + 1;
-           end
+         /* Each pixel, init or increment cursor X coordinate: */
+         internal_cursor_disp_x <= internal_cursor_disp_x + 1;
 
-           /* The buffer contains 16 bytes, i.e. 64 pixels, i.e. 2 lines.
-            * Line 0 is bytes 0-7 (words 0-1), line 1 is bytes 8-15 (words 2-3).
-            */
-           cursor_data    	<= cursor_buffer[ {cursor_disp_y[0], cursor_disp_x[4]} ];
-           cxidx          	<= cursor_disp_x[3:0];
-           was_cursor_pix 	<= on_cursor_x && on_cursor_y;
+         if (px == cursor_x) begin
+            internal_cursor_disp_x 		<= 0;
+            on_cursor_x   			<= 1;
+         end else if (px == cursor_xend) begin
+            on_cursor_x   			<= 0;
+         end
+      end
 
-           was_cursor_pix2 	<= was_cursor_pix;
+      /* The buffer contains 16 bytes, i.e. 64 pixels, i.e. 2 lines.
+       * Line 0 is bytes 0-7 (words 0-1), line 1 is bytes 8-15 (words 2-3).
+       * There's also double-buffering, so 4 lines are stored.
+       */
+      cursor_data    	<= cursor_buffer[ {cursor_disp_y[1:0], cursor_disp_x[4]} ];
+      cxidx          	<= cursor_disp_x[3:0];
+      was_cursor_pix 	<= on_cursor_x && on_cursor_y;
+      was_cursor_pix2 	<= was_cursor_pix;
    end // always @ (posedge pclk)
 
    // The logical cursor pixel coordinates:
