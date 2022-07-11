@@ -147,7 +147,9 @@ module tb_top_arcdvi();
       #(`CLK*100000);
 
       /* Write some VIDC regs */
-      write_vidc_reg(6'h00, 24'h000169);	/* Pal 0 */
+      for (v = 0; v < 16; v = v + 1) begin
+         write_vidc_reg(v[5:0], {12'h000, v[3:0], v[3:0], v[3:0]} );	/* Pal 0-15 */
+      end
       write_vidc_reg(6'h14, 24'h5a5a5a);	/* Special 0 */
       write_vidc_reg(6'h15, 24'hcace00);	/* Special 1 */
 
@@ -162,7 +164,7 @@ module tb_top_arcdvi();
       spi_rd(12'h015, v);
       $display("VIDC special1 = %x", v);
 
-      #(`CLK*2000000);
+      #(`CLK*3000000);
 
       $display("Done.");
       $finish;
