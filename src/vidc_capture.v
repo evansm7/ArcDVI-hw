@@ -318,6 +318,13 @@ module vidc_capture(input wire 	       	      clk,
    wire                 vdak_rising_edge = vdak_last == 0 && vdak == 1;
    wire                 hs_rising_edge   = hs_last == 0 && hs == 1;
 
+   initial begin
+      /* Initialisation of values for simulation, which don't need
+       * an explicit reset in HW. */
+      int_v_dma_counter <= 16'h0;
+      int_c_dma_counter <= 16'h0;
+   end
+
    always @(posedge clk) begin
            if (reset) begin
                    v_state  <= 0;

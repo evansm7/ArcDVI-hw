@@ -53,6 +53,9 @@ sim:	tb_top_arcdvi.vcd
 tb_top.vvp:	tb/tb_top.v
 	$(IVERILOG) $(IVOPTS) $(IVPATHS) -o $@ $<
 
+tb_top_arcdvi.vvp:	tb/tb_top_arcdvi.v
+	$(IVERILOG) $(IVOPTS) $(IVPATHS) -DARCDVI_ICE40 -o $@ $<
+
 tb_comp_video_timing.vvp:	tb/tb_comp_video_timing.v
 	$(IVERILOG) $(IVOPTS) $(IVPATHS) -o $@ $^
 

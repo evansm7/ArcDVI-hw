@@ -136,6 +136,10 @@ module soc_top_arcdvi(input wire         clk_in,
    wire                    video_reg_select = iomem_valid && (iomem_addr[13:12] == 2'b10);
    /* Future use: */
    wire                    cgmem_select     = iomem_valid && (iomem_addr[13:12] == 2'b01);
+   /* Notes:  Short-term, add at least a register to control the LED and to
+    * set up a test card.  (Ideally also to control the pclk PLL multiplication factor too.)
+    * Measuring the rate of vidc_ckin would also be useful.
+    */
 
 
    ////////////////////////////////////////////////////////////////////////////////
@@ -259,7 +263,7 @@ module soc_top_arcdvi(input wire         clk_in,
                .video_vsync(v_vsync),
                .video_de(v_de),
 
-               .enable_test_card(sw[0]),
+               .enable_test_card(1'b0),
 
                .sync_flybk(vidc_flybk),
 

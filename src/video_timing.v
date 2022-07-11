@@ -114,9 +114,10 @@ module video_timing(input wire        	     pclk,
    reg [1:0] 	init_ctr;
 
    initial begin // Bleh, add RESET pls
-      config_sync_ack  <= 0;
-      doing_resync <= 0;
-      vid_enable   <= 1;
+      config_sync_ack <= 0;
+      doing_resync    <= 0;
+      vid_enable      <= 1;
+      init_ctr        <= 0;
    end
 
    always @(posedge pclk) begin
