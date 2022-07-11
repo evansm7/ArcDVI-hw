@@ -35,6 +35,7 @@
 module soc_top_arcdvi(input wire         clk_in,
                       output wire        led,
 
+                      output wire	 v_clk,
                       output wire        v_vsync,
                       output wire        v_hsync,
                       output wire        v_de,
@@ -85,6 +86,8 @@ module soc_top_arcdvi(input wire         clk_in,
                     .pixel_clk(clk_pixel),
                     .sys_clk(clk)
                );
+
+   assign v_clk = clk_pixel;
 
 
    wire 		   reset;
