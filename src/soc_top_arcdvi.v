@@ -65,11 +65,6 @@ module soc_top_arcdvi(input wire         clk_in,
 
    wire                          clk, clk_pixel;
 
-   /* Two PLLs: One generates system/CPU clock from crystal input.
-    * The other generates the video output/pixel clock from the VIDC
-    * clock.
-    */
-
 `ifdef HIRES_MODE
    localparam pixel_freq = 24000000*3.25;
 `else
@@ -87,8 +82,15 @@ module soc_top_arcdvi(input wire         clk_in,
                     .sys_clk(clk)
                );
 
-   assign v_clk = clk_pixel;
-
+`ifndef SIM
+   /* Use a DDR output pin to drive v_clk: */
+   SB_IO #(.PIN_TYPE(6'b010001))	/* Simple input, DDR output, no enable */
+         vclk_out(.OUTPUT_CLK(clk_pixel),
+		  .CLOCK_ENABLE(1'b1),
+		  .D_OUT_0(1'b0), .D_OUT_1(1'b1),
+		  .PACKAGE_PIN(v_clk)
+	          );
+`endif
 
    wire 		   reset;
    reg [1:0]               resetc; // assume start at 0?
