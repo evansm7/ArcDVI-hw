@@ -813,7 +813,8 @@ module video_timing(input wire        	     pclk,
    assign o_b 		= o_b_delayed4;
    assign o_hsync 	= hsync_delayed4;
    assign o_vsync 	= vsync_delayed4;
-   assign o_de 		= de_delayed4;
-   assign o_blank 	= blank_delayed4;
+   assign o_blank	= blank_delayed4;
+   /* HACK for TDA19988: seems to enjoy DE 1 cycle earlier. */
+   assign o_de 		= de_delayed3;
 
 endmodule // video_timing
