@@ -66,7 +66,7 @@ module soc_top_arcdvi(input wire         clk_in,
    wire                          clk, clk_pixel;
 
 `ifdef HIRES_MODE
-   localparam pixel_freq = 24000000*3.25;
+   localparam pixel_freq = 24000000*4;
 `else
    localparam pixel_freq = 24000000;
 `endif
