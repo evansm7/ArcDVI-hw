@@ -3,6 +3,7 @@ module video_pixel_demux(input wire [31:0] pixword,
                          input wire [4:0]  x_index,
 
                          output reg        pixel1b,
+                         output reg [3:0]  pixel1b_hires,
                          output reg [1:0]  pixel2b,
                          output reg [3:0]  pixel4b,
                          output reg [7:0]  pixel8b,
@@ -49,6 +50,22 @@ module video_pixel_demux(input wire [31:0] pixword,
         30: pixel1b      	= pixword[30];
         default: pixel1b 	= pixword[31];
       endcase
+
+      /* The "high resolution mode" version is 4bpp, changing every 4
+       * display pixels.
+       */
+      pixel1b_hires	= 0;
+      case (x_index[4:2])
+        0: pixel1b_hires	= pixword[3:0];
+        1: pixel1b_hires 	= pixword[7:4];
+        2: pixel1b_hires 	= pixword[11:8];
+        3: pixel1b_hires 	= pixword[15:12];
+        4: pixel1b_hires 	= pixword[19:16];
+        5: pixel1b_hires 	= pixword[23:20];
+        6: pixel1b_hires 	= pixword[27:24];
+        default: pixel1b_hires 	= pixword[31:28];
+      endcase
+
 
       pixel2b 	= 0;
       case (x_index[3:0])

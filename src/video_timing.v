@@ -607,6 +607,7 @@ module video_timing(input wire        	     pclk,
    wire                     read_1b_pixel;
    wire [1:0]               read_2b_pixel;
    wire [3:0]               read_4b_pixel;
+   wire [3:0]               read_4b_pixel_hr;
    wire [7:0]               read_8b_pixel;
    wire [15:0]              read_16b_pixel;
 
@@ -614,6 +615,7 @@ module video_timing(input wire        	     pclk,
                          .x_index(xidx1),
 
                          .pixel1b(read_1b_pixel),
+                         .pixel1b_hires(read_4b_pixel_hr),
                          .pixel2b(read_2b_pixel),
                          .pixel4b(read_4b_pixel),
                          .pixel8b(read_8b_pixel),
@@ -624,15 +626,17 @@ module video_timing(input wire        	     pclk,
    /* These 'picked' pixel values are captured here, then
     * chosen in the next stage.
     */
-   reg                     read_1b_pixel2;
-   reg [3:0]               read_124b_pixel2;
-   reg [7:0]               read_8b_pixel2;
-   reg [23:0]   	   read_16b_pixel_rgb2;
+   reg [1:0]                xidx2;
+   reg                      read_1b_pixel2;
+   reg [3:0]                read_124b_pixel2;
+   reg [7:0]                read_8b_pixel2;
+   reg [23:0]               read_16b_pixel_rgb2;
 
    always @(posedge pclk) begin
+      xidx2		 <= xidx1[1:0];
       read_1b_pixel2     <= read_1b_pixel;
       read_8b_pixel2     <= read_8b_pixel;
-      read_124b_pixel2   <= (bpp == 0) ? {3'h0, read_1b_pixel} :
+      read_124b_pixel2   <= (bpp == 0) ? ((en_hires == 0) ? {3'h0, read_1b_pixel} : read_4b_pixel_hr) :
                             (bpp == 1) ? {2'h0, read_2b_pixel} :
                             read_4b_pixel;
 `ifdef INCLUDE_HIGH_COLOUR
@@ -694,15 +698,25 @@ module video_timing(input wire        	     pclk,
       end else
 `endif
         if (en_hires) begin
-           read_pixel3 	<= read_1b_pixel2 ? {`INTERNAL_RGB{1'b0}} : {`INTERNAL_RGB{1'b1}};
+           /* This one's interesting.  The palette is used, and outputs 4 bits every 4
+            * pixels.  So, we need to actually index by the X coordinate here!
+            */
+           if ((xidx2 == 2'b00 && vidc_palette_out[0]) ||
+               (xidx2 == 2'b01 && vidc_palette_out[1]) ||
+               (xidx2 == 2'b10 && vidc_palette_out[2]) ||
+               (xidx2 == 2'b11 && vidc_palette_out[3]))
+             read_pixel3 <= {`INTERNAL_RGB{1'b1}};
+           else
+             read_pixel3 <= {`INTERNAL_RGB{1'b0}};
+
         end else begin // regular 1, 2, 4, 8bpp:
 `ifdef INCLUDE_HIGH_COLOUR
            /* Expand 12bpp->24bpp */
-           read_pixel3 <= { pal_pixel_out[11:8], {4{pal_pixel_out[8]}},
-                            pal_pixel_out[7:4],  {4{pal_pixel_out[4]}},
-                            pal_pixel_out[3:0],  {4{pal_pixel_out[0]}} };
+           read_pixel3 	<= { pal_pixel_out[11:8], {4{pal_pixel_out[8]}},
+                             pal_pixel_out[7:4],  {4{pal_pixel_out[4]}},
+                             pal_pixel_out[3:0],  {4{pal_pixel_out[0]}} };
 `else
-           read_pixel3 <= pal_pixel_out;
+           read_pixel3 	<= pal_pixel_out;
 `endif
         end
    end
