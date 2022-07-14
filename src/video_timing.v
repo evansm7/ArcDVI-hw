@@ -35,6 +35,7 @@
 //`define INCLUDE_HIGH_COLOUR // Not finished!
 
 module video_timing(input wire        	     pclk,
+                    input wire               reset,
                     output wire [7:0]        o_r,
                     output wire [7:0]        o_g,
                     output wire [7:0]        o_b,
@@ -113,32 +114,32 @@ module video_timing(input wire        	     pclk,
    reg          vid_enable;
    reg [1:0] 	init_ctr;
 
-   initial begin // Bleh, add RESET pls
-      config_sync_ack <= 0;
-      doing_resync    <= 0;
-      vid_enable      <= 1;
-      init_ctr        <= 0;
-   end
-
    always @(posedge pclk) begin
-           if (!doing_resync) begin
-                   if (sync_request_pending) begin
-                           doing_resync <= 1;
-                           vid_enable   <= 0;
-                           init_ctr     <= 2'h3;
-                   end
-           end else if (init_ctr != 0) begin
-                   /* Reset for at least 3 cycles. This might miss
-                    * a sync point which is OK; we wait for the next frame.
-                    */
-                   init_ctr               <= init_ctr - 1;
-           end else if (flyback_falling) begin
-                   // Flyback just finished.  Release the timing gen:
-                   vid_enable             <= 1;
-                   doing_resync           <= 0;
-                   // Ack request:
-                   config_sync_ack        <= ~config_sync_ack;
-           end
+      if (!doing_resync) begin
+         if (sync_request_pending) begin
+            doing_resync <= 1;
+            vid_enable   <= 0;
+            init_ctr     <= 2'h3;
+         end
+      end else if (init_ctr != 0) begin
+         /* Reset for at least 3 cycles. This might miss
+          * a sync point which is OK; we wait for the next frame.
+          */
+         init_ctr               <= init_ctr - 1;
+      end else if (flyback_falling) begin
+         // Flyback just finished.  Release the timing gen:
+         vid_enable             <= 1;
+         doing_resync           <= 0;
+         // Ack request:
+         config_sync_ack        <= ~config_sync_ack;
+      end
+
+      if (reset) begin
+         config_sync_ack <= 0;
+         doing_resync    <= 0;
+         vid_enable      <= 1;
+         init_ctr        <= 0;
+      end
    end // always @ (posedge pclk)
 
 

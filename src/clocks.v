@@ -28,6 +28,12 @@
 module clocks(input wire  sys_clk_in,
               input wire  vidc_clk_in,
               output wire pixel_clk,
+              input wire  pixel_clk_nreset,
+              output wire pixel_clk_locked,
+              input wire  pixel_clk_cfg_sdi,
+              output wire pixel_clk_cfg_sdo,
+              input wire  pixel_clk_cfg_sclk,
+              input wire  pixel_clk_bypass,
               output wire sys_clk
               );
 
@@ -36,69 +42,21 @@ module clocks(input wire  sys_clk_in,
 
    /* Clock input of 62.5MHz is ideal as system clock, no need for a PLL: */
    assign sys_clk = sys_clk_in;
-   wire         locked;
 
    /* VIDC clock does want to be multiplied: */
-   generate
-      if (PIXEL_CLK_RATE == VIDC_CLK_IN_RATE) begin
-         /* 24 in, 24 out -- PLL not really necessary! */
-         SB_PLL40_CORE #(.FEEDBACK_PATH("SIMPLE"),
-		         .DIVR(4'b0000),
-		         .DIVF(7'b0011111),
-		         .DIVQ(3'b101),
-		         .FILTER_RANGE(3'b010)
-	                 ) vpll (
-		                 .REFERENCECLK(vidc_clk_in),
-		                 .PLLOUTGLOBAL(pixel_clk),
-		                 .LOCK(locked),
-		                 .RESETB(1'b1),
-		                 .BYPASS(1'b0),
-	                         );
-      end else if (PIXEL_CLK_RATE == VIDC_CLK_IN_RATE * 3.25) begin
-         SB_PLL40_CORE #(.FEEDBACK_PATH("SIMPLE"),
-                         .DIVR(4'b0000),	// DIVR =  0
-                         .DIVF(7'b0011001),	// DIVF = 25
-                         .DIVQ(3'b011),		// DIVQ =  3
-                         .FILTER_RANGE(3'b010)	// FILTER_RANGE = 2
-	                 ) vpll (
-		                 .REFERENCECLK(vidc_clk_in),
-		                 .PLLOUTGLOBAL(pixel_clk),
-		                 .LOCK(locked),
-		                 .RESETB(1'b1),
-		                 .BYPASS(1'b0)
-	                         );
-      end else if (PIXEL_CLK_RATE == VIDC_CLK_IN_RATE * 3.5) begin
-         SB_PLL40_CORE #(.FEEDBACK_PATH("SIMPLE"),
-                         .DIVR(4'b0000),	// DIVR =  0
-                         .DIVF(7'b0011011),	// DIVF = 27
-                         .DIVQ(3'b011),		// DIVQ =  3
-                         .FILTER_RANGE(3'b010)	// FILTER_RANGE = 2
-	                 ) vpll (
-		                 .REFERENCECLK(vidc_clk_in),
-		                 .PLLOUTGLOBAL(pixel_clk),
-		                 .LOCK(locked),
-		                 .RESETB(1'b1),
-		                 .BYPASS(1'b0)
-	                         );
-      end else if (PIXEL_CLK_RATE == VIDC_CLK_IN_RATE * 4) begin
-         SB_PLL40_CORE #(.FEEDBACK_PATH("SIMPLE"),
-		         .DIVR(4'b0000),	// DIVR =  0
-		         .DIVF(7'b0011111),	// DIVF = 31
-		         .DIVQ(3'b011),		// DIVQ =  3
-		         .FILTER_RANGE(3'b010)	// FILTER_RANGE = 2
-	                 ) vpll (
-		                 .REFERENCECLK(vidc_clk_in),
-		                 .PLLOUTGLOBAL(pixel_clk),
-		                 .LOCK(locked),
-		                 .RESETB(1'b1),
-		                 .BYPASS(1'b0)
-	                         );
-      end else begin
-         $error("Need PLL config for this pixel rate");
-         /* FIXME: Pass parameters from build/use icepll to generate! */
-         /* FIXME: Dynamic reconfiguration! */
-      end
-   endgenerate
+   SB_PLL40_CORE #(
+                   .TEST_MODE(1),
+ `include "pll.vh"
+	           ) vpll (
+		           .REFERENCECLK(vidc_clk_in),
+		           .PLLOUTGLOBAL(pixel_clk),
+		           .LOCK(pixel_clk_locked),
+		           .RESETB(pixel_clk_nreset),
+		           .BYPASS(pixel_clk_bypass),
+                           .SDO(pixel_clk_cfg_sdo),
+                           .SDI(pixel_clk_cfg_sdi),
+                           .SCLK(pixel_clk_cfg_sclk)
+	                   );
 
 `else // !`ifndef SIM
 

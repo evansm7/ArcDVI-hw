@@ -31,6 +31,7 @@
  * SOFTWARE.
  */
 
+`define ID_REG_VAL	{8'h00, 24'h000001}
 
 module soc_top_arcdvi(input wire         clk_in,
                       output wire        led,
@@ -63,29 +64,38 @@ module soc_top_arcdvi(input wire         clk_in,
    ////////////////////////////////////////////////////////////////////////////////
    /* Clocks and reset */
 
-   wire                          clk, clk_pixel;
+   wire                                  clk, pclk;
 
-`ifdef HIRES_MODE
-   localparam pixel_freq = 24000000*4;
-`else
-   localparam pixel_freq = 24000000;
-`endif
+   wire                                  pclk_reset;		/* WRT pclk */
+   wire                                  pclk_pll_nreset;	/* WRT clk (but should this be PLL input?) */
+   wire                                  pclk_pll_bypass;
+   wire                                  pclk_pll_locked;
+   wire                                  pclk_pll_sdo;
+   wire                                  pclk_pll_sdi;
+   wire                                  pclk_pll_sclk;
 
-   /* clk_in is 62.5MHz (MCU clock/2); it's used directly. */
-   clocks #(.VIDC_CLK_IN_RATE(24000000),
-            .PIXEL_CLK_RATE(pixel_freq)
-            ) CLKS (
+   /* clk_in is 62.5MHz (MCU clock/2); it's used directly.
+    * vidc_ckin is multiplied to give an alternative fast PCLK
+    * (or the PLL is bypassed and vidc_ckin is used directly)
+    */
+   clocks #() CLKS (
                     .sys_clk_in(clk_in),
-                    .vidc_clk_in(vidc_ckin),
+                    .sys_clk(clk),
 
-                    .pixel_clk(clk_pixel),
-                    .sys_clk(clk)
+                    .vidc_clk_in(vidc_ckin),
+                    .pixel_clk(pclk),
+                    .pixel_clk_nreset(pclk_pll_nreset),
+                    .pixel_clk_bypass(pclk_pll_bypass),
+                    .pixel_clk_locked(pclk_pll_locked),
+                    .pixel_clk_cfg_sdo(pclk_pll_sdo),
+                    .pixel_clk_cfg_sdi(pclk_pll_sdi),
+                    .pixel_clk_cfg_sclk(pclk_pll_sclk)
                );
 
 `ifndef SIM
    /* Use a DDR output pin to drive v_clk: */
    SB_IO #(.PIN_TYPE(6'b010001))	/* Simple input, DDR output, no enable */
-         vclk_out(.OUTPUT_CLK(clk_pixel),
+         vclk_out(.OUTPUT_CLK(pclk),
 		  .CLOCK_ENABLE(1'b1),
 		  .D_OUT_0(1'b0), .D_OUT_1(1'b1),
 		  .PACKAGE_PIN(v_clk)
@@ -95,9 +105,7 @@ module soc_top_arcdvi(input wire         clk_in,
    wire 		   reset;
    reg [1:0]               resetc; // assume start at 0?
    initial begin
-`ifdef SIM
            resetc 	<= 0;
-`endif
    end
    always @(posedge clk) begin
            if (resetc != 2'b11)
@@ -106,10 +114,20 @@ module soc_top_arcdvi(input wire         clk_in,
    assign 	reset = resetc[1:0] != 2'b11;
 
 
+   /* Control registers (w.r.t. clk): */
+   reg 					ctrl_pll_nreset;	/* Both initialised by SW */
+   reg                                  ctrl_pclk_reset;
+
+   /* Synchronise control regs into respective clock domains: */
+   reg [1:0]                            synch_pclk_nreset;
+   always @(posedge pclk)	synch_pclk_nreset[1:0] <= {synch_pclk_nreset[0], ctrl_pclk_reset};
+
+   assign pclk_pll_nreset = ctrl_pll_nreset;			/* Async reset */
+   assign pclk_reset = synch_pclk_nreset[1];
+
+
    ////////////////////////////////////////////////////////////////////////////////
-   /* CPU subsystem:
-    * This can be replaced by an SPI module receiving requests from the outside
-    * world (e.g. run the firmware on an external MCU).
+   /* Outside-world interface
     */
 
    wire                    iomem_valid;
@@ -139,12 +157,54 @@ module soc_top_arcdvi(input wire         clk_in,
 
    wire                    vidc_reg_select  = iomem_valid && (iomem_addr[13:12] == 2'b00);
    wire                    video_reg_select = iomem_valid && (iomem_addr[13:12] == 2'b10);
+   wire                    ctrl_reg_select  = iomem_valid && (iomem_addr[13:12] == 2'b11);
    /* Future use: */
    wire                    cgmem_select     = iomem_valid && (iomem_addr[13:12] == 2'b01);
    /* Notes:  Short-term, add at least a register to control the LED and to
     * set up a test card.  (Ideally also to control the pclk PLL multiplication factor too.)
     * Measuring the rate of vidc_ckin would also be useful.
     */
+
+   ////////////////////////////////////////////////////////////////////////////////
+   // Control regs
+
+   reg [31:0]              ctrl_rd; // Wire
+
+   reg                     ctrl_pll_sd;
+   reg                     ctrl_pll_sclk;
+   reg                     ctrl_pll_bypass;
+
+   always @(*) begin
+      ctrl_rd = 32'h0;
+
+      case (iomem_addr[3:2])
+        2'h0:
+          ctrl_rd = `ID_REG_VAL;
+
+        2'h1:	/* Control register */
+          ctrl_rd = {25'h0,
+                     ctrl_pll_bypass,
+                     pclk_pll_locked /* Which domain...? */,
+                     pclk_pll_sdo /* Which domain...? */, ctrl_pll_sd, ctrl_pll_sclk,
+                     ctrl_pll_nreset, ctrl_pclk_reset};
+      endcase
+   end
+
+   always @(posedge clk) begin
+      if (ctrl_reg_select && iomem_wr) begin
+         if (iomem_addr[3:2] == 2'h1) begin
+            ctrl_pclk_reset <= iomem_wdata[0];
+            ctrl_pll_nreset <= iomem_wdata[1];
+            ctrl_pll_sclk   <= iomem_wdata[2];
+            ctrl_pll_sd     <= iomem_wdata[3];
+            ctrl_pll_bypass <= iomem_wdata[6];
+         end
+      end
+   end
+
+   assign pclk_pll_sdi = ctrl_pll_sd;
+   assign pclk_pll_sclk = ctrl_pll_sclk;
+   assign pclk_pll_bypass = ctrl_pll_bypass;
 
 
    ////////////////////////////////////////////////////////////////////////////////
@@ -259,7 +319,8 @@ module soc_top_arcdvi(input wire         clk_in,
                .vidc_tregs_status(vidc_tregs_status),
                .vidc_tregs_ack(vidc_tregs_ack),
 
-               .clk_pixel(clk_pixel),
+               .clk_pixel(pclk),
+               .reset_pixel(pclk_reset),
 
                .video_r(v_rgb[23:16]),
                .video_g(v_rgb[15:8]),
@@ -282,6 +343,7 @@ module soc_top_arcdvi(input wire         clk_in,
    assign iomem_rdata = vidc_reg_select ? vidc_rd :
                         cgmem_select ? 32'hffffffff :
                         video_reg_select ? video_reg_rd :
+                        ctrl_reg_select ? ctrl_rd :
                         32'h0;
 
 endmodule // soc_top

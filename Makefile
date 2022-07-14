@@ -5,6 +5,7 @@
 
 
 HIRES_MODE ?= 0
+PCLK_MULT ?= 1.5
 
 VERILOG_FILES = src/soc_top_arcdvi.v
 VERILOG_FILES += src/vidc_capture.v
@@ -19,7 +20,7 @@ ARCDVI_TOP_MODULE = soc_top_arcdvi
 all:	tb_top_arcdvi.wave
 
 clean:
-	rm -f *~ src/*~ tb/*~ *.vvp *.vcd *.bit *.asc *.json
+	rm -f *~ src/*~ tb/*~ *.vvp *.vcd *.bit *.asc *.json src/pll.vh
 
 ################################################################################
 
@@ -27,8 +28,11 @@ VDEFS=
 
 # Build options
 ifneq ($(HIRES_MODE), 0)
+	PCLK_MULT = 4
 	VDEFS += -DHIRES_MODE=1
 endif
+
+VDEFS += -DPCLK_MULT=$(PCLK_MULT)
 
 # Test/sim stuff:
 IVERILOG = iverilog
@@ -75,7 +79,7 @@ NEXTPNR_OPTIONS += --report timing.json --placer heap --router router1 --startte
 bitstream: arcdvi-bitstream
 arcdvi-bitstream: arcdvi-ice40.bit
 
-arcdvi-ice40.json: $(VERILOG_FILES)
+arcdvi-ice40.json: $(VERILOG_FILES) src/pll.vh
 	$(YOSYS) $(VDEFS) -DARCDVI_ICE40 \
 	-p "synth_ice40 ${YOSYS_OPTIONS} -json $@ -device hx -abc2 -top ${ARCDVI_TOP_MODULE}" \
 	$(VERILOG_FILES)
@@ -88,3 +92,5 @@ arcdvi-ice40.json: $(VERILOG_FILES)
 %.bit: %.asc
 	$(ICEPACK) $< $@
 
+src/pll.vh:
+	icepll -i 24 -o $(shell echo "24 * $(PCLK_MULT)" | bc) -f $@

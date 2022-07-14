@@ -60,6 +60,7 @@ module video(input wire		      clk,
 
              // Pixel/shift clock-related signals
              input wire               clk_pixel,
+             input wire               reset_pixel,
 
              // Video data output:
              output wire [7:0]        video_r,
@@ -223,6 +224,7 @@ module video(input wire		      clk,
 
    video_timing VTI(
                     .pclk(clk_pixel),
+                    .reset(reset_pixel),
 
                     .o_r(video_r),
                     .o_g(video_g),
