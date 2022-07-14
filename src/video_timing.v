@@ -99,11 +99,11 @@ module video_timing(input wire        	     pclk,
     * The purpose is to wait for the external flyback to finish, then
     * kick off the timing generator to bumble on, synchronised forever more.
     */
-   reg [1:0]    pclk_sync_req;
-   reg [2:0]    pclk_sync_fb; // Synchroniser and 'last' value
+   reg [1:0]                                 pclk_sync_req;
+   reg [2:0]                                 pclk_sync_fb; // Synchroniser and 'last' value
    always @(posedge pclk) begin
-           pclk_sync_req 	<= {pclk_sync_req[0], config_sync_req};
-           pclk_sync_fb 	<= {pclk_sync_fb[1:0], sync_flyback};
+      pclk_sync_req 	<= {pclk_sync_req[0], config_sync_req};
+      pclk_sync_fb 	<= {pclk_sync_fb[1:0], sync_flyback};
    end
 
    wire 	my_sync_req          = pclk_sync_req[1];
@@ -112,7 +112,7 @@ module video_timing(input wire        	     pclk,
 
    reg          doing_resync;
    reg          vid_enable;
-   reg [1:0] 	init_ctr;
+   reg [1:0]    init_ctr;
 
    always @(posedge pclk) begin
       if (!doing_resync) begin
@@ -144,7 +144,7 @@ module video_timing(input wire        	     pclk,
 
 
    ////////////////////////////////////////////////////////////////////////////////
-   // Line buffer:
+   // Videp input line buffer
 
    /* Buffer 0 is used for line 0, 2, 4, etc., buffer 1 used for line 1, 3, 5, etc.
     * The input DMA is written to buffer 0 first, then wrapping to alternate buffers.
@@ -158,30 +158,30 @@ module video_timing(input wire        	     pclk,
     * domain.  (This should be slower than pclk... but beware!)
     */
 
-   reg [8:0] 	line_w_ptr;
-   reg [2:0] 	dclk_sync_fb;
+   reg [8:0]    line_w_ptr;
+   reg [2:0]    dclk_sync_fb;
    wire      	flyback_falling2 = dclk_sync_fb[1] == 0 && dclk_sync_fb[2] == 1;
 
    always @(posedge load_dma_clk) begin
-           // Synchronise flyback into load_dma_clk domain:
-           dclk_sync_fb 	<= {dclk_sync_fb[1:0], sync_flyback};
+      // Synchronise flyback into load_dma_clk domain:
+      dclk_sync_fb 	<= {dclk_sync_fb[1:0], sync_flyback};
 
-           if (flyback_falling2) begin
-                   /* At frame start, reset to beginning of buffer 0: */
-                   line_w_ptr <= 0;
-           end else if (load_dma) begin
-                   /* At the end of a line in, wrap to next buffer: */
-                   if (line_w_ptr[7:0] != t_words_per_line_m1)
-                     line_w_ptr            <= line_w_ptr + 1;
-                   else
-                     line_w_ptr            <= {~line_w_ptr[8], 8'h00};
-                   line_buffer[line_w_ptr] <= load_dma_data;
-           end
+      if (flyback_falling2) begin
+         /* At frame start, reset to beginning of buffer 0: */
+         line_w_ptr <= 0;
+      end else if (load_dma) begin
+         /* At the end of a line in, wrap to next buffer: */
+         if (line_w_ptr[7:0] != t_words_per_line_m1)
+           line_w_ptr            <= line_w_ptr + 1;
+         else
+           line_w_ptr            <= {~line_w_ptr[8], 8'h00};
+         line_buffer[line_w_ptr] <= load_dma_data;
+      end
    end
 
 
    ////////////////////////////////////////////////////////////////////////////////
-   // Cursor buffer:
+   // Cursor input buffer
 
    /* 4 beats (16 bytes) of cursor data is loaded every other line, starting at the first
     * line that the cursor is displayed.
@@ -194,20 +194,51 @@ module video_timing(input wire        	     pclk,
     * at line 0 for lines 0+1), line 1 is still being output.
     */
    reg [31:0] 	cursor_buffer[7:0];	// Need to store 4 beats from hsync time, twice
-   reg [2:0]  	cursor_w_ptr;
+   reg [2:0]    cursor_w_ptr;
 
    always @(posedge load_dma_clk) begin
-           if (flyback_falling2) begin
-                   /* At frame start, reset to beginning of buffer 0: */
-                   cursor_w_ptr <= 0;
-           end else if (load_dma_cursor) begin
-                   if (cursor_w_ptr == 7)
-                     cursor_w_ptr <= 0;
-                   else
-                     cursor_w_ptr <= cursor_w_ptr + 1;
-                   cursor_buffer[cursor_w_ptr] <= load_dma_data;
-           end
+      if (flyback_falling2) begin
+         /* At frame start, reset to beginning of buffer 0: */
+         cursor_w_ptr <= 0;
+      end else if (load_dma_cursor) begin
+         if (cursor_w_ptr == 7)
+           cursor_w_ptr <= 0;
+         else
+           cursor_w_ptr <= cursor_w_ptr + 1;
+         cursor_buffer[cursor_w_ptr] <= load_dma_data;
+      end
    end
+
+
+   ////////////////////////////////////////////////////////////////////////////////
+   // VIDC palette input/24b palette capture
+
+`ifdef INCLUDE_HIGH_COLOUR
+   /* Prototyping:  Extend the 256 colour palette to 24bits.
+    *
+    * This needs a better solution for 1/2/4bpp modes, e.g. a VIDC control reg
+    * extension bit causing them to use this RAM instead of getting the palette
+    * from vidc_palette.  Alternatively, pipe VIDC palette writes through to
+    * this RAM.
+    */
+   reg [23:0] 	palette8b [255:0];
+   initial $readmemh("palette24.mem", palette8b);
+
+   /* Capture special-reg writes into this palette:
+    */
+   always @(posedge load_dma_clk) begin
+      if (vidc_special_written) begin
+         if (vidc_special[11:8] == 4'h0) begin
+            palette8b[vidc_special[7:0]] <= vidc_special_data;
+         end
+      end
+   end
+ `define INTERNAL_RGB 24
+`else
+   reg [11:0] 	palette8b [255:0];
+   initial $readmemh("palette.mem", palette8b);
+ `define INTERNAL_RGB 12
+`endif
 
 
    ////////////////////////////////////////////////////////////////////////////////
@@ -219,11 +250,11 @@ module video_timing(input wire        	     pclk,
     * which completes as the display line starts.
     */
    reg [ctr_width_x-1:0]	ti_h_sync_off;
-   reg [ctr_width_x-1:0]	ti_h_disp_start;
+   reg [ctr_width_x-1:0]        ti_h_disp_start;
    reg [ctr_width_x-1:0]        ti_h_disp_end;
    reg [ctr_width_x-1:0]        ti_h_total;
-   reg [ctr_width_y-1:0]	ti_v_sync_off;
-   reg [ctr_width_y-1:0]	ti_v_disp_start;
+   reg [ctr_width_y-1:0]        ti_v_sync_off;
+   reg [ctr_width_y-1:0]        ti_v_disp_start;
    reg [ctr_width_y-1:0]        ti_v_disp_end;
    reg [ctr_width_y-1:0]        ti_v_total;
    reg                          en_hires;
@@ -233,23 +264,23 @@ module video_timing(input wire        	     pclk,
 
    /* Timing configuration */
    always @(posedge pclk) begin
-           // To initialise new timing, hold clk_pixel_ena=0 for 3 cycles:
-           if (!vid_enable) begin
-                   ti_h_sync_off   <= t_horiz_sync_width - 1;
-                   ti_h_disp_start <= t_horiz_sync_width + t_horiz_bp - 1;
-                   ti_h_disp_end   <= t_horiz_sync_width + t_horiz_bp + t_horiz_res - 1;
-                   ti_h_total      <= t_horiz_sync_width + t_horiz_bp + t_horiz_res + t_horiz_fp - 1;
+      // To initialise new timing, hold clk_pixel_ena=0 for 3 cycles:
+      if (!vid_enable) begin
+         ti_h_sync_off   <= t_horiz_sync_width - 1;
+         ti_h_disp_start <= t_horiz_sync_width + t_horiz_bp - 1;
+         ti_h_disp_end   <= t_horiz_sync_width + t_horiz_bp + t_horiz_res - 1;
+         ti_h_total      <= t_horiz_sync_width + t_horiz_bp + t_horiz_res + t_horiz_fp - 1;
 
-                   ti_v_sync_off   <= t_vert_sync_width - 1;
-                   ti_v_disp_start <= t_vert_sync_width + t_vert_bp - 1;
-                   ti_v_disp_end   <= t_vert_sync_width + t_vert_bp + t_vert_res - 1;
-                   ti_v_total      <= t_vert_sync_width + t_vert_bp + t_vert_res + t_vert_fp - 1;
+         ti_v_sync_off   <= t_vert_sync_width - 1;
+         ti_v_disp_start <= t_vert_sync_width + t_vert_bp - 1;
+         ti_v_disp_end   <= t_vert_sync_width + t_vert_bp + t_vert_res - 1;
+         ti_v_total      <= t_vert_sync_width + t_vert_bp + t_vert_res + t_vert_fp - 1;
 
-                   en_hires       <= t_hires;
-                   bpp            <= t_bpp;
-                   double_x       <= t_double_x;
-                   double_y       <= t_double_y;
-           end
+         en_hires       <= t_hires;
+         bpp            <= t_bpp;
+         double_x       <= t_double_x;
+         double_y       <= t_double_y;
+      end
    end
 
 
@@ -261,29 +292,30 @@ module video_timing(input wire        	     pclk,
     * it's easier to synchronise (this is OK for cursor, not OK for palette).
     */
    reg [10:0] 	cursor_x;
-   reg [10:0] 	cursor_xend;
-   reg [9:0] 	cursor_y;
-   reg [9:0] 	cursor_yend;
+   reg [10:0]   cursor_xend;
+   reg [9:0]    cursor_y;
+   reg [9:0]    cursor_yend;
 
    always @(posedge pclk) begin
-           if (flyback_falling) begin
-                   // These values are the px value before which the cursor appears/ends:
-                   cursor_x    <= (double_x ? {v_cursor_x, 1'b0} : v_cursor_x) +
-                                  ti_h_disp_start;
-                   cursor_xend <= (double_x ? {v_cursor_x, 1'b0} : v_cursor_x) +
-                                  ti_h_disp_start + (double_x ? 64 : 32);
-                   // The y coordinate is the py value before the cursor start/end line (i.e. minus 1):
-                   cursor_y    <= (double_y ? ({v_cursor_y, 1'b0}) : v_cursor_y) +
-                                  ti_v_disp_start - 1;
-                   cursor_yend <= (double_y ? {v_cursor_yend, 1'b0} : v_cursor_yend) +
-                                  ti_v_disp_start - 1;
-           end
+      if (flyback_falling) begin
+         // These values are the px value before which the cursor appears/ends:
+         cursor_x    <= (double_x ? {v_cursor_x, 1'b0} : v_cursor_x) +
+                        ti_h_disp_start;
+         cursor_xend <= (double_x ? {v_cursor_x, 1'b0} : v_cursor_x) +
+                        ti_h_disp_start + (double_x ? 64 : 32);
+         // The y coordinate is the py value before the cursor start/end line (i.e. minus 1):
+         cursor_y    <= (double_y ? ({v_cursor_y, 1'b0}) : v_cursor_y) +
+                        ti_v_disp_start - 1;
+         cursor_yend <= (double_y ? {v_cursor_yend, 1'b0} : v_cursor_yend) +
+                        ti_v_disp_start - 1;
+      end
    end
 
 
    ////////////////////////////////////////////////////////////////////////////////
    // Output frame timing and sync generation
 
+   /* px,py is the physical (on-screen) pixel coordinate */
    reg [ctr_width_x-1:0]	px;
    reg [ctr_width_y-1:0]        py;
    reg                          hsync;
@@ -295,65 +327,65 @@ module video_timing(input wire        	     pclk,
     * counters move every other (output) pixel when pixel/line doubling
     * is enabled:
     */
-   reg [ctr_width_x:0]		internal_dispx;
-   reg [ctr_width_y:0]        	internal_dispy;
-   wire [ctr_width_x-1:0]	dispx;
+   reg [ctr_width_x:0]          internal_dispx;
+   reg [ctr_width_y:0]          internal_dispy;
+   wire [ctr_width_x-1:0]       dispx;
    wire [ctr_width_y-1:0]       dispy;
 
    always @(posedge pclk) begin
-           if (!vid_enable) begin
-                   /* A sync "resets" to the line before the first horizontal
-                    * line on display.  When doubling lines, reset to -2 so
-                    * that the DMA in completes the line before 2 are scanned out.
-                    */
-                   px              <= {ctr_width_x{1'b0}};
-                   py              <= ti_v_disp_start - { {ctr_width_y-1{1'b0}}, double_y }; // -0 or -1
-                   hsync           <= 1;
-                   vsync           <= 0;
-                   de              <= 0;
-                   v_on_display    <= 1;
-                   internal_dispx  <= 0;
-                   internal_dispy  <= 0;
-           end else if (px == ti_h_total) begin
-                   px      <= 0;
-                   hsync   <= 1;
-                   de      <= 0;
+      if (!vid_enable) begin
+         /* A sync "resets" to the line before the first horizontal
+          * line on display.  When doubling lines, reset to -2 so
+          * that the DMA in completes the line before 2 are scanned out.
+          */
+         px             <= {ctr_width_x{1'b0}};
+         py             <= ti_v_disp_start - { {ctr_width_y-1{1'b0}}, double_y }; // -0 or -1
+         hsync          <= 1;
+         vsync          <= 0;
+         de             <= 0;
+         v_on_display   <= 1;
+         internal_dispx <= 0;
+         internal_dispy <= 0;
+      end else if (px == ti_h_total) begin
+         px      	<= 0;
+         hsync   	<= 1;
+         de      	<= 0;
 
-                   if (py == ti_v_total) begin
-                           py           <= 0;
-                           vsync        <= 1;
-                   end else begin
-                           py    <= py + 1;
+         if (py == ti_v_total) begin
+            py          <= 0;
+            vsync       <= 1;
+         end else begin
+            py    	<= py + 1;
 
-                           if (py == ti_v_disp_start) begin
-                                   v_on_display <= 1;
-                           end else if (py == ti_v_disp_end) begin
-                                   v_on_display 	<= 0;
-                                   internal_dispy 	<= 0;
-                           end else if (v_on_display) begin
-                                   internal_dispy 	<= internal_dispy + 1;
-                           end
+            if (py == ti_v_disp_start) begin
+               v_on_display 	<= 1;
+            end else if (py == ti_v_disp_end) begin
+               v_on_display 	<= 0;
+               internal_dispy 	<= 0;
+            end else if (v_on_display) begin
+               internal_dispy 	<= internal_dispy + 1;
+            end
 
-                           if (py == ti_v_sync_off)
-                             vsync <= 0;
-                   end
-           end else begin
-                   px    <= px + 1;
-                   if (de)
-                     internal_dispx <= internal_dispx + 1;
-                   else
-                     internal_dispx <= 0;
+            if (py == ti_v_sync_off)
+              vsync 	<= 0;
+         end
+      end else begin
+         px    		<= px + 1;
+         if (de)
+           internal_dispx <= internal_dispx + 1;
+         else
+           internal_dispx <= 0;
 
-                   // Syncs:
-                   if (px == ti_h_sync_off)
-                     hsync <= 0;
+         // Syncs:
+         if (px == ti_h_sync_off)
+           hsync 	<= 0;
 
-                   if (px == ti_h_disp_start && v_on_display)
-                     de <= 1;
+         if (px == ti_h_disp_start && v_on_display)
+           de 		<= 1;
 
-                   if (px == ti_h_disp_end)
-                     de <= 0;
-           end
+         if (px == ti_h_disp_end)
+           de 		<= 0;
+      end
    end // always @ (posedge pclk)
 
    // The actual logical pixel address:
@@ -364,99 +396,122 @@ module video_timing(input wire        	     pclk,
 
 
    ////////////////////////////////////////////////////////////////////////////////
-   // Output sync signals
+   //           Output pipeline                                                  //
+   ////////////////////////////////////////////////////////////////////////////////
+
+   /*
+    * There are 4 stages of output pipeline AFTER px/py/hsync/vsync/de are generated.
+    *
+    * These accommodate linebuffer and palette access, plus pixel reformatting.
+    *
+    * +-------------+    +-----------------------------+                 +------------+
+    * |             |    |                             |                 |            |
+    * |             |    |                             |     \           |            |
+    * |             |--->|    Video output pipeline    |     |\          |            |
+    * |             |    |     (pixel formatting,      |-----| \         |            |
+    * |  Timing     |    |      palette lookup)        |     |  \        |            |
+    * |  generator  |    |                             |     |   \       |            |
+    * |  FFs:       |    +-----------------------------+     |    \      |            |
+    * |             |                                        |     \     |  Output    |
+    * |  px, py     |    +-----------------------------+     |     |     |  FFs:      |
+    * |  vsync,     |    |                             |     |     |     |            |
+    * |  hsync,     |--->|    Cursor pixel pipeline    |-----|     |---->|  o_vsync   |
+    * |  de         |    |                             |     |     |     |  o_hsync   |
+    * |             |    +-----------------------------+     |     /     |  o_de      |
+    * |             |                                        |    /      |  o_{r,g,b} |
+    * |             |    +-----------------------------+     |   /       |            |
+    * |             |    |                             |     |  /        |            |
+    * |             |    |                             |-----| /         |            |
+    * |             |--->|    Test pattern pipeline    |     |/          |            |
+    * |             |    |                             |     /           |            |
+    * +------/\-----+    +-----------------------------+                 +-----/\-----+
+    *
+    * Detail of video output pipeline:
+    * ---+
+    *    |           +-------+             +-------+             +-------+
+    *    |           |       |             |       |             |       |
+    *    |           | Line  |             |       |             | Pal.  |
+    *    | Generate  | buff  | Demux pixel | 1,2,4 | Palette     | read  |
+    *    | display   | RAM   | from word   | & 8   | access      | data  |   \
+    *    | RAM index | read  |             | bpp   |   &         |       |   |\
+    *    |           | data  |             | pixel | formatting  | (out  |   | \
+    *    |---------->|       |------------>|       |------------>| pixel)|-->|  \
+    *    |           |       |             |       |             |       |   |   \
+    * 0  |           | 1     |             | 2     |             | 3     |   |    \
+    *    |           |       |             |       |             |       |   |     \
+    *    |           +--/\---+             +--/\---+             +--/\---+   |     |
+    * ---+                                                                   . ... . -> Out FFs
+    *
+    * NOTE: Generally signals have a numerical suffix corresponding to the pipeline
+    * stage they represent, where 0 = the FFs that hold px/py/syncs.
+    */
+
+   ////////////////////////////////////////////////////////////////////////////////
+   // Output sync signals (pipeline stages 0-1, 1-2, 2-3)
 
    /* The coordinates dispx/dispy/px/py are aligned (in time) with de/hsync/vsync.
     * If they're used as a RAM access (as they will be), its output will be delayed
     * and shifted relative to those signals.  So, they must be delayed too.
-    *
-    * There are 4 stages of output pipeline, accommodating linebuffer and palette
-    * access plus pixel reformatting.
     */
-   reg       	hsync_delayed, vsync_delayed, de_delayed;
-   reg       	hsync_delayed2, vsync_delayed2, de_delayed2, blank_delayed2;
-   reg          hsync_delayed3, vsync_delayed3, de_delayed3, blank_delayed3;
-   reg          hsync_delayed4, vsync_delayed4, de_delayed4, blank_delayed4;
+   reg       	hsync1, vsync1, de1;
+   reg       	hsync2, vsync2, de2, blank2;
+   reg          hsync3, vsync3, de3, blank3;
+   reg          hsync4, vsync4, de4, blank4;
 
    always @(posedge pclk) begin
-           hsync_delayed  <= hsync;
-           vsync_delayed  <= vsync;
-           de_delayed     <= de;
+      hsync1 <= hsync;
+      vsync1 <= vsync;
+      de1    <= de;
 
-           hsync_delayed2 <= hsync_delayed;
-           vsync_delayed2 <= vsync_delayed;
-           de_delayed2    <= de_delayed;
-           blank_delayed2 <= ~de_delayed;
+      hsync2 <= hsync1;
+      vsync2 <= vsync1;
+      de2    <= de1;
+      blank2 <= ~de1;
 
-           hsync_delayed3 <= hsync_delayed2;
-           vsync_delayed3 <= vsync_delayed2;
-           de_delayed3    <= de_delayed2;
-           blank_delayed3 <= blank_delayed2;
+      hsync3 <= hsync2;
+      vsync3 <= vsync2;
+      de3    <= de2;
+      blank3 <= blank2;
 
-           hsync_delayed4 <= hsync_delayed3;
-           vsync_delayed4 <= vsync_delayed3;
-           de_delayed4    <= de_delayed3;
-           blank_delayed4 <= blank_delayed3;
+      hsync4 <= hsync3;
+      vsync4 <= vsync3;
+      de4    <= de3;
+      blank4 <= blank3;
    end
 
 
    ////////////////////////////////////////////////////////////////////////////////
    // Test image generator
 
-   // These signals are aligned in time with hsync_delayed and friends.
-   reg [7:0] 	tc_r;
-   reg [7:0] 	tc_g;
-   reg [7:0] 	tc_b;
-
-   // These signals are aligned in time with hsync_delayed2 and friends.
-   reg [7:0] 	tc_r2;
-   reg [7:0] 	tc_g2;
-   reg [7:0] 	tc_b2;
-
-   // These signals are aligned in time with hsync_delayed3 and friends.
-   reg [7:0] 	tc_r3;
-   reg [7:0] 	tc_g3;
-   reg [7:0] 	tc_b3;
-
-   wire      	stripex = (px == (ti_h_disp_start+1)) ||
-                (px == (ti_h_disp_end)) || (px[7:0] == 8'h00);
-   wire      	stripey = (py == (ti_v_disp_start+1)) ||
-                (py == ti_v_disp_end) || (py[7:0] == 8'h00);
-   wire [7:0] 	stripe = (stripex || stripey) ? 8'hff : 8'h0;
-
-   always @(posedge pclk) begin
-           tc_r <= dispx[7:0] | stripe;
-           tc_g <= dispy[7:0] | stripe;
-           tc_b <= (dispx[8:1] ^ dispy[8:1]) | stripe;
-
-           tc_r2 	<= tc_r;
-           tc_g2 	<= tc_g;
-           tc_b2 	<= tc_b;
-
-           tc_r3 	<= tc_r2;
-           tc_g3 	<= tc_g2;
-           tc_b3 	<= tc_b2;
-   end
+   video_test_pattern VTP(.pclk(pclk),
+                          .px(px),
+                          .py(py),
+                          .xstart(ti_h_disp_start+1),
+                          .xend(ti_h_disp_end),
+                          .ystart(ti_v_disp_start+1),
+                          .yend(ti_v_disp_end),
+                          .r3(tc_r3),
+                          .g3(tc_g3),
+                          .b3(tc_b3)
+                          );
 
 
    ////////////////////////////////////////////////////////////////////////////////
-   // Cursor video data
+   // Cursor video data (pipeline stages 0-1, 1-2, 2-3)
 
-   reg [31:0] 	cursor_data;
+   reg [31:0] 	cursor_data1;
    reg        	on_cursor_x;
    reg        	on_cursor_y;
-   reg [5:0]  	internal_cursor_disp_x;
-   reg [10:0] 	internal_cursor_disp_y;	 // FIXME: make smaller
-   wire [4:0] 	cursor_disp_x;
-   wire [9:0] 	cursor_disp_y;
-   reg [3:0]  	cxidx;
-   reg        	was_cursor_pix;
+   reg [5:0]    internal_cursor_disp_x;
+   reg [10:0]   internal_cursor_disp_y;	 // FIXME: make smaller
+   wire [4:0]   cursor_disp_x;
+   wire [9:0]   cursor_disp_y;
+   reg [3:0]    cxidx1;
+   reg        	was_cursor_pix1;
    reg        	was_cursor_pix2;
-   reg [1:0] 	cursor_pixel; // Wire
-   reg [1:0] 	cursor_pixel_hr; // Wire
+   wire [1:0]   cursor_pixel;
    reg [1:0]    cursor_pixel2;
-   reg [1:0]    cursor_pixel2_hr;
-   // This logic culminates in this signal, valid aligned with hsync_delayed3 et al:
+   // This logic culminates in this signal, valid aligned with hsync3 et al:
    reg [1:0]    cursor_pixel3;
 
    /* This is slightly contorted, and not necessarily for good reason.
@@ -495,14 +550,16 @@ module video_timing(input wire        	     pclk,
          end
       end
 
+      /* Read cursor buffer RAM */
+
       /* The buffer contains 16 bytes, i.e. 64 pixels, i.e. 2 lines.
        * Line 0 is bytes 0-7 (words 0-1), line 1 is bytes 8-15 (words 2-3).
        * There's also double-buffering, so 4 lines are stored.
        */
-      cursor_data    	<= cursor_buffer[ {cursor_disp_y[1:0], cursor_disp_x[4]} ];
-      cxidx          	<= cursor_disp_x[3:0];
-      was_cursor_pix 	<= on_cursor_x && on_cursor_y;
-      was_cursor_pix2 	<= was_cursor_pix;
+      cursor_data1    	<= cursor_buffer[ {cursor_disp_y[1:0], cursor_disp_x[4]} ];
+      cxidx1          	<= cursor_disp_x[3:0];
+      was_cursor_pix1 	<= on_cursor_x && on_cursor_y;
+      was_cursor_pix2 	<= was_cursor_pix1;
    end // always @ (posedge pclk)
 
    // The logical cursor pixel coordinates:
@@ -511,70 +568,21 @@ module video_timing(input wire        	     pclk,
    assign 	cursor_disp_y = double_y ? internal_cursor_disp_y[10:1] :
                                 internal_cursor_disp_y[9:0];
 
-   always @(*) begin
-           cursor_pixel = 2'b00;
-
-           case (cxidx)
-             4'h0:	cursor_pixel = cursor_data[1:0];
-             4'h1:	cursor_pixel = cursor_data[3:2];
-             4'h2:	cursor_pixel = cursor_data[5:4];
-             4'h3:	cursor_pixel = cursor_data[7:6];
-             4'h4:	cursor_pixel = cursor_data[9:8];
-             4'h5:	cursor_pixel = cursor_data[11:10];
-             4'h6:	cursor_pixel = cursor_data[13:12];
-             4'h7:	cursor_pixel = cursor_data[15:14];
-             4'h8:	cursor_pixel = cursor_data[17:16];
-             4'h9:	cursor_pixel = cursor_data[19:18];
-             4'ha:	cursor_pixel = cursor_data[21:20];
-             4'hb:	cursor_pixel = cursor_data[23:22];
-             4'hc:	cursor_pixel = cursor_data[25:24];
-             4'hd:	cursor_pixel = cursor_data[27:26];
-             4'he:	cursor_pixel = cursor_data[29:28];
-             default:	cursor_pixel = cursor_data[31:30];
-           endcase // case (cxidx)
-   end
+   demux_32_2 CPS(.in(cursor_data1),
+                  .sel(cxidx1),
+                  .out(cursor_pixel));
 
    always @(posedge pclk) begin
-           cursor_pixel2 	<= cursor_pixel;
-           cursor_pixel3 	<= !was_cursor_pix2 ? 2'b00 : cursor_pixel2;
+      cursor_pixel2 	<= cursor_pixel;
+      cursor_pixel3 	<= !was_cursor_pix2 ? 2'b00 : cursor_pixel2;
    end
 
 
    ////////////////////////////////////////////////////////////////////////////////
-   // Video data
+   // Video: read and format pixel data (pipeline stages 0-1, 1-2)
 
-`ifdef INCLUDE_HIGH_COLOUR
-   /* Prototyping:  Extend the 256 colour palette to 24bits.
-    *
-    * This needs a better solution for 1/2/4bpp modes, e.g. a VIDC control reg
-    * extension bit causing them to use this RAM instead of getting the palette
-    * from vidc_palette.  Alternatively, pipe VIDC palette writes through to
-    * this RAM.
-    */
-   reg [23:0] 	palette8b [255:0];
-   initial $readmemh("palette24.mem", palette8b);
-
-   /* Capture special-reg writes into this palette:
-    */
-   always @(posedge load_dma_clk) begin
-           if (vidc_special_written) begin
-                   if (vidc_special[11:8] == 4'h0) begin
-                           palette8b[vidc_special[7:0]] <= vidc_special_data;
-                   end
-           end
-   end
-`define INTERNAL_RGB 24
-`else
-   reg [11:0] 	palette8b [255:0];
-   initial $readmemh("palette.mem", palette8b);
- `define INTERNAL_RGB 12
-`endif
-
-   /* Generate video image: */
-   reg [31:0] 	rdata;
-   reg [4:0]  	xidx;
-
-   wire [8:0] 	read_line_idx = (bpp == 0) ? /* 1BPP */
+   /* Generate video pixel address: */
+   wire [8:0]   read_line_idx = (bpp == 0) ? /* 1BPP */
                 {dispy[0], 2'b00, dispx[ctr_width_x-1:5]} :
                 (bpp == 1) ? /* 2BPP */
                 {dispy[0], 1'b0, dispx[ctr_width_x-1:4]} :
@@ -589,178 +597,113 @@ module video_timing(input wire        	     pclk,
 `endif
 
    /* Read the video RAM, indexed by X scaled by BPP: */
+   reg [31:0]   rdata1;
+   reg [4:0]    xidx1;
+
    always @(posedge pclk) begin
-           rdata 	<= line_buffer[read_line_idx];
-           xidx  	<= dispx[4:0];
+      rdata1 	<= line_buffer[read_line_idx];
+      xidx1  	<= dispx[4:0];
    end
 
-   /* Pixel selection/reformatting: */
+   /* Pixel selection/reformatting from read data: */
+   wire                     read_1b_pixel;
+   wire [1:0]               read_2b_pixel;
+   wire [3:0]               read_4b_pixel;
+   wire [7:0]               read_8b_pixel;
+   wire [15:0]              read_16b_pixel;
 
-   reg 		read_1b_pixel;
-   reg [3:0]    read_124b_pixel;
-   reg [`INTERNAL_RGB-1:0]	read_8b_pixel_rgb;
-   reg          read_1b_pixel_d; // wire
-   reg [1:0]    read_2b_pixel_d; // wire
-   reg [3:0]    read_4b_pixel_d; // wire
-   reg [7:0]    read_8b_pixel_d; // wire
+   video_pixel_demux VPD(.pixword(rdata1),
+                         .x_index(xidx1),
 
-   /* Replacing the ternary ops with these case statements gave a significant perf
-    * improvement; yosys seems to do a much better job with these.
+                         .pixel1b(read_1b_pixel),
+                         .pixel2b(read_2b_pixel),
+                         .pixel4b(read_4b_pixel),
+                         .pixel8b(read_8b_pixel),
+                         .pixel16b(read_16b_pixel)
+                         );
+
+
+   /* These 'picked' pixel values are captured here, then
+    * chosen in the next stage.
     */
-   always @(*) begin
-           read_1b_pixel_d 	= 0;
-           case (xidx[4:0])
-             0: read_1b_pixel_d       	= rdata[0];
-             1: read_1b_pixel_d       	= rdata[1];
-             2: read_1b_pixel_d       	= rdata[2];
-             3: read_1b_pixel_d       	= rdata[3];
-             4: read_1b_pixel_d       	= rdata[4];
-             5: read_1b_pixel_d       	= rdata[5];
-             6: read_1b_pixel_d       	= rdata[6];
-             7: read_1b_pixel_d       	= rdata[7];
-             8: read_1b_pixel_d       	= rdata[8];
-             9: read_1b_pixel_d       	= rdata[9];
-             10: read_1b_pixel_d      	= rdata[10];
-             11: read_1b_pixel_d      	= rdata[11];
-             12: read_1b_pixel_d      	= rdata[12];
-             13: read_1b_pixel_d      	= rdata[13];
-             14: read_1b_pixel_d      	= rdata[14];
-             15: read_1b_pixel_d      	= rdata[15];
-             16: read_1b_pixel_d      	= rdata[16];
-             17: read_1b_pixel_d      	= rdata[17];
-             18: read_1b_pixel_d      	= rdata[18];
-             19: read_1b_pixel_d      	= rdata[19];
-             20: read_1b_pixel_d      	= rdata[20];
-             21: read_1b_pixel_d      	= rdata[21];
-             22: read_1b_pixel_d      	= rdata[22];
-             23: read_1b_pixel_d      	= rdata[23];
-             24: read_1b_pixel_d      	= rdata[24];
-             25: read_1b_pixel_d      	= rdata[25];
-             26: read_1b_pixel_d      	= rdata[26];
-             27: read_1b_pixel_d      	= rdata[27];
-             28: read_1b_pixel_d      	= rdata[28];
-             29: read_1b_pixel_d      	= rdata[29];
-             30: read_1b_pixel_d      	= rdata[30];
-             default: read_1b_pixel_d 	= rdata[31];
-           endcase // case (xidx[4:0])
+   reg                     read_1b_pixel2;
+   reg [3:0]               read_124b_pixel2;
+   reg [`INTERNAL_RGB-1:0] read_8b_pixel_rgb2;
+   reg [23:0]   	   read_16b_pixel_rgb2;
 
-           read_2b_pixel_d 	= 0;
-           case (xidx[3:0])
-             0: read_2b_pixel_d 	= rdata[1:0];
-             1: read_2b_pixel_d 	= rdata[3:2];
-             2: read_2b_pixel_d 	= rdata[5:4];
-             3: read_2b_pixel_d 	= rdata[7:6];
-             4: read_2b_pixel_d 	= rdata[9:8];
-             5: read_2b_pixel_d 	= rdata[11:10];
-             6: read_2b_pixel_d 	= rdata[13:12];
-             7: read_2b_pixel_d 	= rdata[15:14];
-             8: read_2b_pixel_d 	= rdata[17:16];
-             9: read_2b_pixel_d 	= rdata[19:18];
-             10: read_2b_pixel_d 	= rdata[21:20];
-             11: read_2b_pixel_d 	= rdata[23:22];
-             12: read_2b_pixel_d 	= rdata[25:24];
-             13: read_2b_pixel_d 	= rdata[27:26];
-             14: read_2b_pixel_d 	= rdata[29:28];
-             default: read_2b_pixel_d 	= rdata[31:30];
-           endcase // case (xidx[3:0])
+   always @(posedge pclk) begin
+      read_1b_pixel2     <= read_1b_pixel;
+      read_8b_pixel_rgb2 <= palette8b[read_8b_pixel];
 
-           read_4b_pixel_d	= 0;
-           case (xidx[2:0])
-             0: read_4b_pixel_d 	= rdata[3:0];
-             1: read_4b_pixel_d 	= rdata[7:4];
-             2: read_4b_pixel_d 	= rdata[11:8];
-             3: read_4b_pixel_d 	= rdata[15:12];
-             4: read_4b_pixel_d 	= rdata[19:16];
-             5: read_4b_pixel_d 	= rdata[23:20];
-             6: read_4b_pixel_d 	= rdata[27:24];
-             default: read_4b_pixel_d 	= rdata[31:28];
-           endcase // case (xidx[2:0])
-
-           read_8b_pixel_d	= 0;
-           case (xidx[1:0])
-             0:	read_8b_pixel_d       	= rdata[7:0];
-             1: read_8b_pixel_d       	= rdata[15:8];
-             2: read_8b_pixel_d       	= rdata[23:16];
-             default: read_8b_pixel_d 	= rdata[31:24];
-           endcase // case (xidx[1:0])
-   end // always @ (*)
-
+      read_124b_pixel2   <= (bpp == 0) ? {3'h0, read_1b_pixel} :
+                            (bpp == 1) ? {2'h0, read_2b_pixel} :
+                            read_4b_pixel;
 `ifdef INCLUDE_HIGH_COLOUR
-   reg  [23:0]   read_16b_pixel_rgb;
-   wire [15:0]   read_16b_pixel_d;
-
-   assign read_16b_pixel_d 		= xidx[0] ? rdata[31:16] : rdata[15:0];
-   always @(posedge pclk) begin
-           read_16b_pixel_rgb <= { read_16b_pixel_d[15:11], {3{read_16b_pixel_d[11]}},
-                                   read_16b_pixel_d[10:5],  {2{read_16b_pixel_d[5]}},
-                                   read_16b_pixel_d[4:0],   {3{read_16b_pixel_d[0]}} };
-   end
+      /* FIXME: Save some flops by expanding this later on? */
+      read_16b_pixel_rgb2 <= { read_16b_pixel[15:11], {3{read_16b_pixel[11]}},
+                               read_16b_pixel[10:5],  {2{read_16b_pixel[5]}},
+                               read_16b_pixel[4:0],   {3{read_16b_pixel[0]}} };
 `endif
-
-   // These signals are aligned with hsync_delayed2 et al:
-   always @(posedge pclk) begin
-           read_1b_pixel     <= read_1b_pixel_d;
-           read_8b_pixel_rgb <= palette8b[read_8b_pixel_d];
-
-           read_124b_pixel   <= (bpp == 0) ? {3'h0, read_1b_pixel_d} :
-                                (bpp == 1) ? {2'h0, read_2b_pixel_d} :
-                                read_4b_pixel_d;
    end
+
+
+   ////////////////////////////////////////////////////////////////////////////////
+   // Video: palette lookup (pipeline stage 2-3)
 
    reg [11:0] 	vidc_palette_out; // Wire
 
    /* This is an unsynchronised read of regs from another clock domain,
     * achtung! */
    always @(*) begin
-           vidc_palette_out = 0;
+      vidc_palette_out = 0;
 
-           case (read_124b_pixel)
-             4'h0:	vidc_palette_out = vidc_palette[(12*1)-1:(12*0)];
-             4'h1:	vidc_palette_out = vidc_palette[(12*2)-1:(12*1)];
-             4'h2:	vidc_palette_out = vidc_palette[(12*3)-1:(12*2)];
-             4'h3:	vidc_palette_out = vidc_palette[(12*4)-1:(12*3)];
-             4'h4:	vidc_palette_out = vidc_palette[(12*5)-1:(12*4)];
-             4'h5:	vidc_palette_out = vidc_palette[(12*6)-1:(12*5)];
-             4'h6:	vidc_palette_out = vidc_palette[(12*7)-1:(12*6)];
-             4'h7:	vidc_palette_out = vidc_palette[(12*8)-1:(12*7)];
-             4'h8:	vidc_palette_out = vidc_palette[(12*9)-1:(12*8)];
-             4'h9:	vidc_palette_out = vidc_palette[(12*10)-1:(12*9)];
-             4'ha:	vidc_palette_out = vidc_palette[(12*11)-1:(12*10)];
-             4'hb:	vidc_palette_out = vidc_palette[(12*12)-1:(12*11)];
-             4'hc:	vidc_palette_out = vidc_palette[(12*13)-1:(12*12)];
-             4'hd:	vidc_palette_out = vidc_palette[(12*14)-1:(12*13)];
-             4'he:	vidc_palette_out = vidc_palette[(12*15)-1:(12*14)];
-             default:	vidc_palette_out = vidc_palette[(12*16)-1:(12*15)];
-           endcase
+      case (read_124b_pixel2)
+        4'h0:	vidc_palette_out = vidc_palette[(12*1)-1:(12*0)];
+        4'h1:	vidc_palette_out = vidc_palette[(12*2)-1:(12*1)];
+        4'h2:	vidc_palette_out = vidc_palette[(12*3)-1:(12*2)];
+        4'h3:	vidc_palette_out = vidc_palette[(12*4)-1:(12*3)];
+        4'h4:	vidc_palette_out = vidc_palette[(12*5)-1:(12*4)];
+        4'h5:	vidc_palette_out = vidc_palette[(12*6)-1:(12*5)];
+        4'h6:	vidc_palette_out = vidc_palette[(12*7)-1:(12*6)];
+        4'h7:	vidc_palette_out = vidc_palette[(12*8)-1:(12*7)];
+        4'h8:	vidc_palette_out = vidc_palette[(12*9)-1:(12*8)];
+        4'h9:	vidc_palette_out = vidc_palette[(12*10)-1:(12*9)];
+        4'ha:	vidc_palette_out = vidc_palette[(12*11)-1:(12*10)];
+        4'hb:	vidc_palette_out = vidc_palette[(12*12)-1:(12*11)];
+        4'hc:	vidc_palette_out = vidc_palette[(12*13)-1:(12*12)];
+        4'hd:	vidc_palette_out = vidc_palette[(12*14)-1:(12*13)];
+        4'he:	vidc_palette_out = vidc_palette[(12*15)-1:(12*14)];
+        default:	vidc_palette_out = vidc_palette[(12*16)-1:(12*15)];
+      endcase
    end
 
-   // These signals are aligned with hsync_delayed3 et al:
    reg [`INTERNAL_RGB-1:0] 	read_pixel3;
 
    always @(posedge pclk) begin
 `ifdef INCLUDE_HIGH_COLOUR
-           if (bpp == 4) begin
-                   read_pixel3 	<= read_16b_pixel_rgb;
-           end else
+      if (bpp == 4) begin
+         read_pixel3 	<= read_16b_pixel_rgb2;
+      end else
 `endif
-           if (bpp == 3) begin
-                   read_pixel3 	<= read_8b_pixel_rgb;
-           end else if (en_hires) begin
-                   read_pixel3 	<= read_1b_pixel ? {`INTERNAL_RGB{1'b0}} : {`INTERNAL_RGB{1'b1}};
-           end else begin // regular 1, 2, 4bpp:
+        if (bpp == 3) begin
+           read_pixel3 <= read_8b_pixel_rgb2;
+        end else if (en_hires) begin
+           read_pixel3 	<= read_1b_pixel2 ? {`INTERNAL_RGB{1'b0}} : {`INTERNAL_RGB{1'b1}};
+        end else begin // regular 1, 2, 4bpp:
 `ifdef INCLUDE_HIGH_COLOUR
-             read_pixel3 <= { vidc_palette_out[11:8], {4{vidc_palette_out[8]}},
-                              vidc_palette_out[7:4],  {4{vidc_palette_out[4]}},
-                              vidc_palette_out[3:0],  {4{vidc_palette_out[0]}} };
+           /* Expand 12bpp->24bpp */
+           read_pixel3 <= { vidc_palette_out[11:8], {4{vidc_palette_out[8]}},
+                            vidc_palette_out[7:4],  {4{vidc_palette_out[4]}},
+                            vidc_palette_out[3:0],  {4{vidc_palette_out[0]}} };
 `else
-             read_pixel3 <= vidc_palette_out;
+           read_pixel3 <= vidc_palette_out;
 `endif
-           end
+        end
    end
 
 
    ////////////////////////////////////////////////////////////////////////////////
-   // Final video output pipeline stage
+   // Final video output (pipeline stage 3-4)
 
    /* Overlay cursor onto video: (false colour for mode 23 :) ) */
    wire [11:0] cursor_col0int            = en_hires ? 12'hff0 :
@@ -779,43 +722,43 @@ module video_timing(input wire        	     pclk,
                                cursor_col2int[7:4],  {4{cursor_col2int[4]}},
                                cursor_col2int[3:0],  {4{cursor_col2int[0]}} };
 `else
-   wire [11:0] cursor_col0 = cursor_col0int;
-   wire [11:0] cursor_col1 = cursor_col1int;
-   wire [11:0] cursor_col2 = cursor_col2int;
+   wire [11:0] cursor_col0 		= cursor_col0int;
+   wire [11:0] cursor_col1 		= cursor_col1int;
+   wire [11:0] cursor_col2 		= cursor_col2int;
 `endif
    wire [`INTERNAL_RGB-1:0] final_pixel_rgb 	= cursor_pixel3 == 2'b00 ? read_pixel3 :
-               (cursor_pixel3 == 2'b01) ? cursor_col0 :
-               (cursor_pixel3 == 2'b10) ? cursor_col1 :
-               cursor_col2;
-   wire [3:0]  final_pixel_r = final_pixel_rgb[3:0];
-   wire [3:0]  final_pixel_g = final_pixel_rgb[7:4];
-   wire [3:0]  final_pixel_b = final_pixel_rgb[11:8];
+                                                  (cursor_pixel3 == 2'b01) ? cursor_col0 :
+                                                  (cursor_pixel3 == 2'b10) ? cursor_col1 :
+                                                  cursor_col2;
+   wire [3:0]               final_pixel_r = final_pixel_rgb[3:0];
+   wire [3:0]               final_pixel_g = final_pixel_rgb[7:4];
+   wire [3:0]               final_pixel_b = final_pixel_rgb[11:8];
 
-   /* These output signals are aligned with hsync_delayed4 et al: */
-   reg [7:0]    o_r_delayed4;
-   reg [7:0]    o_g_delayed4;
-   reg [7:0]    o_b_delayed4;
+   /* These output signals are aligned with hsync4 et al: */
+   reg [7:0]                o_r4;
+   reg [7:0]                o_g4;
+   reg [7:0]                o_b4;
 
    always @(posedge pclk) begin
-           /* Select between test card & 4-to-8 expanded video data: */
+      /* Select between test card & 4-to-8 expanded video data: */
 `ifdef INCLUDE_HIGH_COLOUR
-           o_r_delayed4 <= (enable_test_card) ? tc_r3 : final_pixel_rgb[7:0];
-           o_g_delayed4 <= (enable_test_card) ? tc_g3 : final_pixel_rgb[15:8];
-           o_b_delayed4 <= (enable_test_card) ? tc_b3 : final_pixel_rgb[23:16];
+      o_r4 <= (enable_test_card) ? tc_r3 : final_pixel_rgb[7:0];
+      o_g4 <= (enable_test_card) ? tc_g3 : final_pixel_rgb[15:8];
+      o_b4 <= (enable_test_card) ? tc_b3 : final_pixel_rgb[23:16];
 `else
-           o_r_delayed4 <= (enable_test_card) ? tc_r3 : {final_pixel_r[3:0], {4{final_pixel_r[3]}}};
-           o_g_delayed4 <= (enable_test_card) ? tc_g3 : {final_pixel_g[3:0], {4{final_pixel_g[3]}}};
-           o_b_delayed4 <= (enable_test_card) ? tc_b3 : {final_pixel_b[3:0], {4{final_pixel_b[3]}}};
+      o_r4 <= (enable_test_card) ? tc_r3 : {final_pixel_r[3:0], {4{final_pixel_r[3]}}};
+      o_g4 <= (enable_test_card) ? tc_g3 : {final_pixel_g[3:0], {4{final_pixel_g[3]}}};
+      o_b4 <= (enable_test_card) ? tc_b3 : {final_pixel_b[3:0], {4{final_pixel_b[3]}}};
 `endif
    end
 
-   assign o_r 		= o_r_delayed4;
-   assign o_g 		= o_g_delayed4;
-   assign o_b 		= o_b_delayed4;
-   assign o_hsync 	= hsync_delayed4;
-   assign o_vsync 	= vsync_delayed4;
-   assign o_blank	= blank_delayed4;
+   assign o_r 		= o_r4;
+   assign o_g 		= o_g4;
+   assign o_b 		= o_b4;
+   assign o_hsync 	= hsync4;
+   assign o_vsync 	= vsync4;
+   assign o_blank	= blank4;
    /* HACK for TDA19988: seems to enjoy DE 1 cycle earlier. */
-   assign o_de 		= de_delayed3;
+   assign o_de 		= de3;
 
 endmodule // video_timing

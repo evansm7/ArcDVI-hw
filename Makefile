@@ -11,6 +11,9 @@ VERILOG_FILES = src/soc_top_arcdvi.v
 VERILOG_FILES += src/vidc_capture.v
 VERILOG_FILES += src/video.v
 VERILOG_FILES += src/video_timing.v
+VERILOG_FILES += src/video_test_pattern.v
+VERILOG_FILES += src/video_pixel_demux.v
+VERILOG_FILES += src/demux_32_2.v
 VERILOG_FILES += src/clocks.v
 VERILOG_FILES += src/spir.v
 
