@@ -235,8 +235,6 @@ module video_timing(input wire        	     pclk,
    end
  `define INTERNAL_RGB 24
 `else
-   reg [11:0] 	palette8b [255:0];
-   initial $readmemh("palette.mem", palette8b);
  `define INTERNAL_RGB 12
 `endif
 
@@ -628,13 +626,12 @@ module video_timing(input wire        	     pclk,
     */
    reg                     read_1b_pixel2;
    reg [3:0]               read_124b_pixel2;
-   reg [`INTERNAL_RGB-1:0] read_8b_pixel_rgb2;
+   reg [7:0]               read_8b_pixel2;
    reg [23:0]   	   read_16b_pixel_rgb2;
 
    always @(posedge pclk) begin
       read_1b_pixel2     <= read_1b_pixel;
-      read_8b_pixel_rgb2 <= palette8b[read_8b_pixel];
-
+      read_8b_pixel2     <= read_8b_pixel;
       read_124b_pixel2   <= (bpp == 0) ? {3'h0, read_1b_pixel} :
                             (bpp == 1) ? {2'h0, read_2b_pixel} :
                             read_4b_pixel;
@@ -650,6 +647,7 @@ module video_timing(input wire        	     pclk,
    ////////////////////////////////////////////////////////////////////////////////
    // Video: palette lookup (pipeline stage 2-3)
 
+   wire [3:0]   pal_idx = (bpp == 3) ? read_8b_pixel2[3:0] : read_124b_pixel2;
    reg [11:0] 	vidc_palette_out; // Wire
 
    /* This is an unsynchronised read of regs from another clock domain,
@@ -657,7 +655,7 @@ module video_timing(input wire        	     pclk,
    always @(*) begin
       vidc_palette_out = 0;
 
-      case (read_124b_pixel2)
+      case (pal_idx)
         4'h0:	vidc_palette_out = vidc_palette[(12*1)-1:(12*0)];
         4'h1:	vidc_palette_out = vidc_palette[(12*2)-1:(12*1)];
         4'h2:	vidc_palette_out = vidc_palette[(12*3)-1:(12*2)];
@@ -679,24 +677,32 @@ module video_timing(input wire        	     pclk,
 
    reg [`INTERNAL_RGB-1:0] 	read_pixel3;
 
+   wire [11:0]                  pal_pixel_out;
+
+   /* Contortions for generating a VIDC 8BPP colour from the palette
+    * output -- or just straight palette RGB if 1,2,4BPP:
+    */
+   assign pal_pixel_out = (bpp == 3) ? {read_8b_pixel2[7], vidc_palette_out[10:8], 	/* Blue */
+                                        read_8b_pixel2[6:5], vidc_palette_out[5:4], 	/* Green */
+                                        read_8b_pixel2[4], vidc_palette_out[2:0]} 	/* Red */
+                          : vidc_palette_out;
+
    always @(posedge pclk) begin
 `ifdef INCLUDE_HIGH_COLOUR
       if (bpp == 4) begin
          read_pixel3 	<= read_16b_pixel_rgb2;
       end else
 `endif
-        if (bpp == 3) begin
-           read_pixel3 <= read_8b_pixel_rgb2;
-        end else if (en_hires) begin
+        if (en_hires) begin
            read_pixel3 	<= read_1b_pixel2 ? {`INTERNAL_RGB{1'b0}} : {`INTERNAL_RGB{1'b1}};
-        end else begin // regular 1, 2, 4bpp:
+        end else begin // regular 1, 2, 4, 8bpp:
 `ifdef INCLUDE_HIGH_COLOUR
            /* Expand 12bpp->24bpp */
-           read_pixel3 <= { vidc_palette_out[11:8], {4{vidc_palette_out[8]}},
-                            vidc_palette_out[7:4],  {4{vidc_palette_out[4]}},
-                            vidc_palette_out[3:0],  {4{vidc_palette_out[0]}} };
+           read_pixel3 <= { pal_pixel_out[11:8], {4{pal_pixel_out[8]}},
+                            pal_pixel_out[7:4],  {4{pal_pixel_out[4]}},
+                            pal_pixel_out[3:0],  {4{pal_pixel_out[0]}} };
 `else
-           read_pixel3 <= vidc_palette_out;
+           read_pixel3 <= pal_pixel_out;
 `endif
         end
    end
