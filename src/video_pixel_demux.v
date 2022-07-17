@@ -107,7 +107,7 @@ module video_pixel_demux(input wire [31:0] pixword,
         default: pixel8b 	= pixword[31:24];
       endcase
 
-      read_16b_pixel_d 		= x_index[0] ? pixword[31:16] : pixword[15:0];
+      pixel16b 			= x_index[0] ? pixword[31:16] : pixword[15:0];
 
    end // always @ (*)
 
