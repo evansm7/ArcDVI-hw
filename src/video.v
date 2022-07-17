@@ -100,6 +100,7 @@ module video(input wire		      clk,
    reg                  c_double_x;
    reg                  c_double_y;
    reg [10:0]           c_cursor_x_offset;
+   reg			c_crtlook;
 
    always @(posedge clk) begin
            if (reset) begin
@@ -166,6 +167,7 @@ module video(input wire		      clk,
                      4'h3:      c_hs_bp                      <= reg_wdata[10:0];
                      4'h4: begin
                              c_res_y    <= reg_wdata[10:0];
+                             c_crtlook  <= reg_wdata[30];
                              c_double_y <= reg_wdata[31];
                      end
                      4'h5:      c_vs_fp                      <= reg_wdata[10:0];
@@ -202,7 +204,7 @@ module video(input wire		      clk,
                                   reg_addr[5:2] == 4'h1 ? {21'h0, c_hs_fp} :
                                   reg_addr[5:2] == 4'h2 ? {21'h0, c_hs_width} :
                                   reg_addr[5:2] == 4'h3 ? {21'h0, c_hs_bp} :
-                                  reg_addr[5:2] == 4'h4 ? {c_double_y, 20'h0, c_res_y} :
+                                  reg_addr[5:2] == 4'h4 ? {c_double_y, c_crtlook, 19'h0, c_res_y} :
                                   reg_addr[5:2] == 4'h5 ? {21'h0, c_vs_fp} :
                                   reg_addr[5:2] == 4'h6 ? {21'h0, c_vs_width} :
                                   reg_addr[5:2] == 4'h7 ? {21'h0, c_vs_bp} :
@@ -265,6 +267,7 @@ module video(input wire		      clk,
                     .t_bpp(c_bpp),
                     .t_double_x(c_double_x),
                     .t_double_y(c_double_y),
+                    .c_crtlook(c_crtlook),
 
                     .sync_flyback(sync_flybk),
                     .config_sync_req(c_sync),

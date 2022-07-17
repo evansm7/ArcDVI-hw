@@ -58,6 +58,7 @@ module video_timing(input wire        	     pclk,
                     input wire               t_hires,
                     input wire               t_double_x,
                     input wire               t_double_y,
+                    input wire               c_crtlook,
 
                     /* Per-frame dynamic stuff, e.g. cursor */
                     input wire [10:0]        v_cursor_x,
@@ -293,6 +294,8 @@ module video_timing(input wire        	     pclk,
    reg [10:0]   cursor_xend;
    reg [9:0]    cursor_y;
    reg [9:0]    cursor_yend;
+   reg [1:0]    sync_crt_look;
+   wire         crt_look = sync_crt_look[1];
 
    always @(posedge pclk) begin
       if (flyback_falling) begin
@@ -306,6 +309,7 @@ module video_timing(input wire        	     pclk,
                         ti_v_disp_start - 1;
          cursor_yend <= (double_y ? {v_cursor_yend, 1'b0} : v_cursor_yend) +
                         ti_v_disp_start - 1;
+         sync_crt_look[1:0] <= {sync_crt_look[0], c_crtlook};
       end
    end
 
@@ -597,10 +601,12 @@ module video_timing(input wire        	     pclk,
    /* Read the video RAM, indexed by X scaled by BPP: */
    reg [31:0]   rdata1;
    reg [4:0]    xidx1;
+   reg          dispy_odd1;
 
    always @(posedge pclk) begin
-      rdata1 	<= line_buffer[read_line_idx];
-      xidx1  	<= dispx[4:0];
+      rdata1     <= line_buffer[read_line_idx];
+      xidx1      <= dispx[4:0];
+      dispy_odd1 <= internal_dispy[0];
    end
 
    /* Pixel selection/reformatting from read data: */
@@ -631,9 +637,11 @@ module video_timing(input wire        	     pclk,
    reg [3:0]                read_124b_pixel2;
    reg [7:0]                read_8b_pixel2;
    reg [23:0]               read_16b_pixel_rgb2;
+   reg          	    dispy_odd2;
 
    always @(posedge pclk) begin
       xidx2		 <= xidx1[1:0];
+      dispy_odd2 	 <= dispy_odd1;
       read_1b_pixel2     <= read_1b_pixel;
       read_8b_pixel2     <= read_8b_pixel;
       read_124b_pixel2   <= (bpp == 0) ? ((en_hires == 0) ? {3'h0, read_1b_pixel} : read_4b_pixel_hr) :
@@ -712,11 +720,19 @@ module video_timing(input wire        	     pclk,
         end else begin // regular 1, 2, 4, 8bpp:
 `ifdef INCLUDE_HIGH_COLOUR
            /* Expand 12bpp->24bpp */
-           read_pixel3 	<= { pal_pixel_out[11:8], {4{pal_pixel_out[8]}},
-                             pal_pixel_out[7:4],  {4{pal_pixel_out[4]}},
-                             pal_pixel_out[3:0],  {4{pal_pixel_out[0]}} };
+           read_pixel3 	<= (dispy_odd2 && double_y && crt_look) ?
+                           { 1'b0, pal_pixel_out[11:7], {4{pal_pixel_out[8]}},
+                             1'b0, pal_pixel_out[7:5],  {4{pal_pixel_out[4]}},
+                             1'b0, pal_pixel_out[3:1],  {4{pal_pixel_out[0]}} }
+                           : { pal_pixel_out[11:8], {4{pal_pixel_out[8]}},
+                               pal_pixel_out[7:4],  {4{pal_pixel_out[4]}},
+                               pal_pixel_out[3:0],  {4{pal_pixel_out[0]}} };
 `else
-           read_pixel3 	<= pal_pixel_out;
+           /* Pleasant CRT-ish banding effect in linedoubled modes */
+           read_pixel3  <= (dispy_odd2 && double_y && crt_look) ? { 1'b0, pal_pixel_out[11:9],
+                                                                    1'b0, pal_pixel_out[7:5],
+                                                                    1'b0, pal_pixel_out[3:1] }
+                          : pal_pixel_out;
 `endif
         end
    end
