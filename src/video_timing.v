@@ -430,26 +430,26 @@ module video_timing(input wire        	     pclk,
     *
     * Detail of video output pipeline:
     * ---+
-    *    |           +-------+             +-------+             +-------+
-    *    |           |       |             |       |             |       |
-    *    |           | Line  |             |       |             | Pal.  |
-    *    | Generate  | buff  | Demux pixel | 1,2,4 | Palette     | read  |
-    *    | display   | RAM   | from word   | & 8   | access      | data  |   \
-    *    | RAM index | read  |             | bpp   |   &         |       |   |\
-    *    |           | data  |             | pixel | formatting  | (out  |   | \
-    *    |---------->|       |------------>|       |------------>| pixel)|-->|  \
-    *    |           |       |             |       |             |       |   |   \
-    * 0  |           | 1     |             | 2     |             | 3     |   |    \
-    *    |           |       |             |       |             |       |   |     \
-    *    |           +--/\---+             +--/\---+             +--/\---+   |     |
-    * ---+                                                                   . ... . -> Out FFs
+    *    |           +-------+        +-------+         +-------+        +-------+
+    *    |           |       |        |       |         |       |        |       |
+    *    |           | Line  |        |       |         |       |        |       |
+    *    | Generate  | buff  | Demux  | 1,2,4 | Palette | Pal.  | Final  | Output|
+    *    | display   | RAM   | pixel  | & 8   | index   | read  | colour | pixel |   \
+    *    | RAM index | read  | from   | bpp   | calc    | data  | muxing |       |   |\
+    *    |           | data  | word   | pixel |         | (sync)|        |       |   | \
+    *    |---------->|       |--------|       |-------->|       |--------|       |-->|  \
+    *    |           |       |        |       |         |       |        |       |   |   \
+    * 0  |           | 1     |        | 2     |         | 3     |        | 4     |   |    \
+    *    |           |       |        |       |         |       |        |       |   |     \
+    *    |           +--/\---+        +--/\---+         +--/\---+        +--/\---+   |     |
+    * ---+                                                                           . ... . -> Out FFs
     *
     * NOTE: Generally signals have a numerical suffix corresponding to the pipeline
     * stage they represent, where 0 = the FFs that hold px/py/syncs.
     */
 
    ////////////////////////////////////////////////////////////////////////////////
-   // Output sync signals (pipeline stages 0-1, 1-2, 2-3)
+   // Output sync signals (pipeline stages 0-1, 1-2, 2-3, 3-4, 4-5)
 
    /* The coordinates dispx/dispy/px/py are aligned (in time) with de/hsync/vsync.
     * If they're used as a RAM access (as they will be), its output will be delayed
@@ -459,6 +459,7 @@ module video_timing(input wire        	     pclk,
    reg       	hsync2, vsync2, de2, blank2;
    reg          hsync3, vsync3, de3, blank3;
    reg          hsync4, vsync4, de4, blank4;
+   reg       	hsync5, vsync5, de5, blank5;
 
    always @(posedge pclk) begin
       hsync1 <= hsync;
@@ -479,11 +480,20 @@ module video_timing(input wire        	     pclk,
       vsync4 <= vsync3;
       de4    <= de3;
       blank4 <= blank3;
+
+      hsync5 <= hsync4;
+      vsync5 <= vsync4;
+      de5    <= de4;
+      blank5 <= blank4;
    end
 
 
    ////////////////////////////////////////////////////////////////////////////////
    // Test image generator
+
+   wire [7:0] 	tc_r4;
+   wire [7:0] 	tc_g4;
+   wire [7:0]   tc_b4;
 
    video_test_pattern VTP(.pclk(pclk),
                           .px(px),
@@ -492,14 +502,14 @@ module video_timing(input wire        	     pclk,
                           .xend(ti_h_disp_end),
                           .ystart(ti_v_disp_start+1),
                           .yend(ti_v_disp_end),
-                          .r3(tc_r3),
-                          .g3(tc_g3),
-                          .b3(tc_b3)
+                          .r(tc_r4),
+                          .g(tc_g4),
+                          .b(tc_b4)
                           );
 
 
    ////////////////////////////////////////////////////////////////////////////////
-   // Cursor video data (pipeline stages 0-1, 1-2, 2-3)
+   // Cursor video data (pipeline stages 0-1, 1-2, 2-3, 3-4)
 
    reg [31:0] 	cursor_data1;
    reg        	on_cursor_x;
@@ -513,8 +523,9 @@ module video_timing(input wire        	     pclk,
    reg        	was_cursor_pix2;
    wire [1:0]   cursor_pixel;
    reg [1:0]    cursor_pixel2;
-   // This logic culminates in this signal, valid aligned with hsync3 et al:
+   // This logic culminates in this signal, valid aligned with hsync3/4 et al:
    reg [1:0]    cursor_pixel3;
+   reg [1:0]    cursor_pixel4;
 
    /* This is slightly contorted, and not necessarily for good reason.
     * We track the offset of the output pixel relative to (0,0) cursor TL, and use
@@ -577,6 +588,7 @@ module video_timing(input wire        	     pclk,
    always @(posedge pclk) begin
       cursor_pixel2 	<= cursor_pixel;
       cursor_pixel3 	<= !was_cursor_pix2 ? 2'b00 : cursor_pixel2;
+      cursor_pixel4 	<= cursor_pixel3;
    end
 
 
@@ -636,7 +648,7 @@ module video_timing(input wire        	     pclk,
    reg                      read_1b_pixel2;
    reg [3:0]                read_124b_pixel2;
    reg [7:0]                read_8b_pixel2;
-   reg [23:0]               read_16b_pixel_rgb2;
+   reg [15:0]               read_16b_pixel2;
    reg          	    dispy_odd2;
 
    always @(posedge pclk) begin
@@ -648,10 +660,7 @@ module video_timing(input wire        	     pclk,
                             (bpp == 1) ? {2'h0, read_2b_pixel} :
                             read_4b_pixel;
 `ifdef INCLUDE_HIGH_COLOUR
-      /* FIXME: Save some flops by expanding this later on? */
-      read_16b_pixel_rgb2 <= { read_16b_pixel[15:11], {3{read_16b_pixel[11]}},
-                               read_16b_pixel[10:5],  {2{read_16b_pixel[5]}},
-                               read_16b_pixel[4:0],   {3{read_16b_pixel[0]}} };
+      read_16b_pixel2 	 <= read_16b_pixel;
 `endif
    end
 
@@ -659,8 +668,13 @@ module video_timing(input wire        	     pclk,
    ////////////////////////////////////////////////////////////////////////////////
    // Video: palette lookup (pipeline stage 2-3)
 
+   reg [1:0]    xidx3;
+   reg          dispy_odd3;
+   reg [7:0]    read_8b_pixel3;
+   reg [15:0]   read_16b_pixel3;
    wire [3:0]   pal_idx = (bpp == 3) ? read_8b_pixel2[3:0] : read_124b_pixel2;
    reg [11:0] 	vidc_palette_out; // Wire
+   reg [11:0] 	vidc_palette_out3;
 
    /* This is an unsynchronised read of regs from another clock domain,
     * achtung! */
@@ -687,40 +701,55 @@ module video_timing(input wire        	     pclk,
       endcase
    end
 
-   reg [`INTERNAL_RGB-1:0] 	read_pixel3;
+   always @(posedge pclk) begin
+      vidc_palette_out3 <= vidc_palette_out;
+
+      xidx3             <= xidx2;
+      dispy_odd3        <= dispy_odd2;
+      read_8b_pixel3    <= read_8b_pixel2;
+      read_16b_pixel3   <= read_16b_pixel2;
+   end
+
+
+   ////////////////////////////////////////////////////////////////////////////////
+   // Video: Pixel output (pipeline stage 3-4)
+
+   reg [`INTERNAL_RGB-1:0] 	read_pixel4;
 
    wire [11:0]                  pal_pixel_out;
 
    /* Contortions for generating a VIDC 8BPP colour from the palette
     * output -- or just straight palette RGB if 1,2,4BPP:
     */
-   assign pal_pixel_out = (bpp == 3) ? {read_8b_pixel2[7], vidc_palette_out[10:8], 	/* Blue */
-                                        read_8b_pixel2[6:5], vidc_palette_out[5:4], 	/* Green */
-                                        read_8b_pixel2[4], vidc_palette_out[2:0]} 	/* Red */
-                          : vidc_palette_out;
+   assign pal_pixel_out = (bpp == 3) ? {read_8b_pixel3[7], vidc_palette_out3[10:8], 	/* Blue */
+                                        read_8b_pixel3[6:5], vidc_palette_out3[5:4], 	/* Green */
+                                        read_8b_pixel3[4], vidc_palette_out3[2:0]} 	/* Red */
+                          : vidc_palette_out3;
 
    always @(posedge pclk) begin
 `ifdef INCLUDE_HIGH_COLOUR
       if (bpp == 4) begin
-         read_pixel3 	<= read_16b_pixel_rgb2;
+         read_pixel4 <= { read_16b_pixel3[15:11], {3{read_16b_pixel3[11]}},
+                            read_16b_pixel3[10:5],  {2{read_16b_pixel3[5]}},
+                            read_16b_pixel3[4:0],   {3{read_16b_pixel3[0]}} };
       end else
 `endif
         if (en_hires) begin
            /* This one's interesting.  The palette is used, and outputs 4 bits every 4
             * pixels.  So, we need to actually index by the X coordinate here!
             */
-           if ((xidx2 == 2'b00 && vidc_palette_out[0]) ||
-               (xidx2 == 2'b01 && vidc_palette_out[1]) ||
-               (xidx2 == 2'b10 && vidc_palette_out[2]) ||
-               (xidx2 == 2'b11 && vidc_palette_out[3]))
-             read_pixel3 <= {`INTERNAL_RGB{1'b1}};
+           if ((xidx3 == 2'b00 && vidc_palette_out3[0]) ||
+               (xidx3 == 2'b01 && vidc_palette_out3[1]) ||
+               (xidx3 == 2'b10 && vidc_palette_out3[2]) ||
+               (xidx3 == 2'b11 && vidc_palette_out3[3]))
+             read_pixel4 <= {`INTERNAL_RGB{1'b1}};
            else
-             read_pixel3 <= {`INTERNAL_RGB{1'b0}};
+             read_pixel4 <= {`INTERNAL_RGB{1'b0}};
 
         end else begin // regular 1, 2, 4, 8bpp:
 `ifdef INCLUDE_HIGH_COLOUR
            /* Expand 12bpp->24bpp */
-           read_pixel3 	<= (dispy_odd2 && double_y && crt_look) ?
+           read_pixel4 	<= (dispy_odd3 && double_y && crt_look) ?
                            { 1'b0, pal_pixel_out[11:7], {4{pal_pixel_out[8]}},
                              1'b0, pal_pixel_out[7:5],  {4{pal_pixel_out[4]}},
                              1'b0, pal_pixel_out[3:1],  {4{pal_pixel_out[0]}} }
@@ -729,7 +758,7 @@ module video_timing(input wire        	     pclk,
                                pal_pixel_out[3:0],  {4{pal_pixel_out[0]}} };
 `else
            /* Pleasant CRT-ish banding effect in linedoubled modes */
-           read_pixel3  <= (dispy_odd2 && double_y && crt_look) ? { 1'b0, pal_pixel_out[11:9],
+           read_pixel4  <= (dispy_odd3 && double_y && crt_look) ? { 1'b0, pal_pixel_out[11:9],
                                                                     1'b0, pal_pixel_out[7:5],
                                                                     1'b0, pal_pixel_out[3:1] }
                           : pal_pixel_out;
@@ -762,39 +791,39 @@ module video_timing(input wire        	     pclk,
    wire [11:0] cursor_col1 		= cursor_col1int;
    wire [11:0] cursor_col2 		= cursor_col2int;
 `endif
-   wire [`INTERNAL_RGB-1:0] final_pixel_rgb 	= cursor_pixel3 == 2'b00 ? read_pixel3 :
-                                                  (cursor_pixel3 == 2'b01) ? cursor_col0 :
-                                                  (cursor_pixel3 == 2'b10) ? cursor_col1 :
+   wire [`INTERNAL_RGB-1:0] final_pixel_rgb 	= cursor_pixel4 == 2'b00 ? read_pixel4 :
+                                                  (cursor_pixel4 == 2'b01) ? cursor_col0 :
+                                                  (cursor_pixel4 == 2'b10) ? cursor_col1 :
                                                   cursor_col2;
    wire [3:0]               final_pixel_r = final_pixel_rgb[3:0];
    wire [3:0]               final_pixel_g = final_pixel_rgb[7:4];
    wire [3:0]               final_pixel_b = final_pixel_rgb[11:8];
 
    /* These output signals are aligned with hsync4 et al: */
-   reg [7:0]                o_r4;
-   reg [7:0]                o_g4;
-   reg [7:0]                o_b4;
+   reg [7:0]                o_r5;
+   reg [7:0]                o_g5;
+   reg [7:0]                o_b5;
 
    always @(posedge pclk) begin
       /* Select between test card & 4-to-8 expanded video data: */
 `ifdef INCLUDE_HIGH_COLOUR
-      o_r4 <= (enable_test_card) ? tc_r3 : final_pixel_rgb[7:0];
-      o_g4 <= (enable_test_card) ? tc_g3 : final_pixel_rgb[15:8];
-      o_b4 <= (enable_test_card) ? tc_b3 : final_pixel_rgb[23:16];
+      o_r5 <= (enable_test_card) ? tc_r4 : final_pixel_rgb[7:0];
+      o_g5 <= (enable_test_card) ? tc_g4 : final_pixel_rgb[15:8];
+      o_b5 <= (enable_test_card) ? tc_b4 : final_pixel_rgb[23:16];
 `else
-      o_r4 <= (enable_test_card) ? tc_r3 : {final_pixel_r[3:0], {4{final_pixel_r[3]}}};
-      o_g4 <= (enable_test_card) ? tc_g3 : {final_pixel_g[3:0], {4{final_pixel_g[3]}}};
-      o_b4 <= (enable_test_card) ? tc_b3 : {final_pixel_b[3:0], {4{final_pixel_b[3]}}};
+      o_r5 <= (enable_test_card) ? tc_r4 : {final_pixel_r[3:0], {4{final_pixel_r[3]}}};
+      o_g5 <= (enable_test_card) ? tc_g4 : {final_pixel_g[3:0], {4{final_pixel_g[3]}}};
+      o_b5 <= (enable_test_card) ? tc_b4 : {final_pixel_b[3:0], {4{final_pixel_b[3]}}};
 `endif
    end
 
-   assign o_r 		= o_r4;
-   assign o_g 		= o_g4;
-   assign o_b 		= o_b4;
-   assign o_hsync 	= hsync4;
-   assign o_vsync 	= vsync4;
-   assign o_blank	= blank4;
+   assign o_r 		= o_r5;
+   assign o_g 		= o_g5;
+   assign o_b 		= o_b5;
+   assign o_hsync 	= hsync5;
+   assign o_vsync 	= vsync5;
+   assign o_blank	= blank5;
    /* HACK for TDA19988: seems to enjoy DE 1 cycle earlier. */
-   assign o_de 		= de3;
+   assign o_de 		= de4;
 
 endmodule // video_timing
