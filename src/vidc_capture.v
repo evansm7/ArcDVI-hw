@@ -119,10 +119,10 @@ module vidc_capture(input wire 	       	      clk,
    reg [9:0]                                  vidc_VCER;
 
    reg [8:0]                                  vidc_SFR; // Including test bit8
-   reg [10:0]                                 vidc_CR;  // Compacted, 13:9 removed
+   reg [12:0]                                 vidc_CR;  // Compacted, 13:9 removed
 
    // Register reads (to MCU):
-   reg [31:0]                                 rdata; // wire
+   reg [23:0]                                 rdata; // wire
 
    always @(*) begin
       rdata = 0;
@@ -162,7 +162,9 @@ module vidc_capture(input wire 	       	      clk,
         6'b101111:		rdata = {vidc_VCER, 14'h0};
         6'b110000:		rdata = {15'h0, vidc_SFR};
 
-        6'b111000:		rdata = {8'h0, vidc_CR[10:9], 5'b00000, vidc_CR[8:0]};
+        6'b111000:		rdata = {vidc_CR[12], vidc_CR[11],
+                                         6'h0, vidc_CR[10:9],
+                                         5'b00000, vidc_CR[8:0]};
       endcase // case (vidc_reg_sel)
    end
    assign vidc_reg_rdata 	= rdata;
@@ -246,6 +248,8 @@ module vidc_capture(input wire 	       	      clk,
                              6'b110000:	vidc_SFR	<= vidc_regw_data[8:0];
 
                              6'b111000: begin
+	                        vidc_CR[12] 		<= vidc_regw_data[23];
+	                        vidc_CR[11] 		<= vidc_regw_data[22];
 	                        vidc_CR[10:9] 		<= vidc_regw_data[15:14];
                                 vidc_CR[8:0]		<= vidc_regw_data[8:0];
                              end
