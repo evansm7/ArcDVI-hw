@@ -101,6 +101,7 @@ module video(input wire		      clk,
    reg                  c_double_y;
    reg [10:0]           c_cursor_x_offset;
    reg			c_crtlook;
+   reg			c_ext_pal;
 
    always @(posedge clk) begin
            if (reset) begin
@@ -178,8 +179,8 @@ module video(input wire		      clk,
                              vidc_tregs_ack <= reg_wdata[2];
                      end
                      4'h9:	c_wpl_m1                     <= reg_wdata[7:0];
-                     4'ha:	{c_hires, c_bpp,
-                                 c_cursor_x_offset} <= { reg_wdata[31:28],
+                     4'ha:	{c_hires, c_bpp, c_ext_pal,
+                                 c_cursor_x_offset} <= { reg_wdata[31:27],
                                                          reg_wdata[10:0] };
                    endcase
            end
@@ -212,7 +213,7 @@ module video(input wire		      clk,
                                                            vidc_tregs_status, vidc_tregs_ack,
                                                            c_sync_ack, c_sync} :
                                   reg_addr[5:2] == 4'h9 ? {24'h0, c_wpl_m1} :
-                                  reg_addr[5:2] == 4'ha ? {c_hires, c_bpp, 17'h0, c_cursor_x_offset} :
+                                  reg_addr[5:2] == 4'ha ? {c_hires, c_bpp, c_ext_pal, 16'h0, c_cursor_x_offset} :
                                   32'h0;
 
    assign is_hires 	 	= c_hires;
@@ -268,6 +269,7 @@ module video(input wire		      clk,
                     .t_double_x(c_double_x),
                     .t_double_y(c_double_y),
                     .c_crtlook(c_crtlook),
+                    .c_ext_pal(c_ext_pal),
 
                     .sync_flyback(sync_flybk),
                     .config_sync_req(c_sync),

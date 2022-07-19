@@ -59,6 +59,7 @@ module video_timing(input wire        	     pclk,
                     input wire               t_double_x,
                     input wire               t_double_y,
                     input wire               c_crtlook,
+                    input wire               c_ext_pal,
 
                     /* Per-frame dynamic stuff, e.g. cursor */
                     input wire [10:0]        v_cursor_x,
@@ -215,22 +216,20 @@ module video_timing(input wire        	     pclk,
    // VIDC palette input/24b palette capture
 
 `ifdef INCLUDE_HIGH_COLOUR
-   /* Prototyping:  Extend the 256 colour palette to 24bits.
+   /* Extend the 256 colour palette to 24bits.
     *
-    * This needs a better solution for 1/2/4bpp modes, e.g. a VIDC control reg
-    * extension bit causing them to use this RAM instead of getting the palette
-    * from vidc_palette.  Alternatively, pipe VIDC palette writes through to
-    * this RAM.
+    * A VIDC control reg extension bit causes 8bpp modes to use this palette
+    * instead of the regular vidc_palette.  1/2/4bpp modes always use the VIDC
+    * palette.  16bpp modes have no palette.
     */
-   reg [23:0] 	palette8b [255:0];
-   initial $readmemh("palette24.mem", palette8b);
+   reg [23:0] 	ext_palette8b [255:0];
 
    /* Capture special-reg writes into this palette:
     */
    always @(posedge load_dma_clk) begin
       if (vidc_special_written) begin
          if (vidc_special[11:8] == 4'h0) begin
-            palette8b[vidc_special[7:0]] <= vidc_special_data;
+            ext_palette8b[vidc_special[7:0]] <= vidc_special_data;
          end
       end
    end
@@ -296,6 +295,8 @@ module video_timing(input wire        	     pclk,
    reg [9:0]    cursor_yend;
    reg [1:0]    sync_crt_look;
    wire         crt_look = sync_crt_look[1];
+   reg [1:0]    sync_ext_pal;
+   wire         ext_pal = sync_ext_pal[1];
 
    always @(posedge pclk) begin
       if (flyback_falling) begin
@@ -310,6 +311,7 @@ module video_timing(input wire        	     pclk,
          cursor_yend <= (double_y ? {v_cursor_yend, 1'b0} : v_cursor_yend) +
                         ti_v_disp_start - 1;
          sync_crt_look[1:0] <= {sync_crt_look[0], c_crtlook};
+         sync_ext_pal[1:0] <= {sync_ext_pal[0], c_ext_pal};
       end
    end
 
@@ -671,6 +673,7 @@ module video_timing(input wire        	     pclk,
    reg [1:0]    xidx3;
    reg          dispy_odd3;
    reg [7:0]    read_8b_pixel3;
+   reg [23:0]   read_8b_pixel_ext3;
    reg [15:0]   read_16b_pixel3;
    wire [3:0]   pal_idx = (bpp == 3) ? read_8b_pixel2[3:0] : read_124b_pixel2;
    reg [11:0] 	vidc_palette_out; // Wire
@@ -710,6 +713,12 @@ module video_timing(input wire        	     pclk,
       read_16b_pixel3   <= read_16b_pixel2;
    end
 
+`ifdef INCLUDE_HIGH_COLOUR
+   /* Extended palette read */
+   always @(posedge pclk) begin
+      read_8b_pixel_ext3 	<= ext_palette8b[read_8b_pixel2];
+   end
+`endif
 
    ////////////////////////////////////////////////////////////////////////////////
    // Video: Pixel output (pipeline stage 3-4)
@@ -748,14 +757,23 @@ module video_timing(input wire        	     pclk,
 
         end else begin // regular 1, 2, 4, 8bpp:
 `ifdef INCLUDE_HIGH_COLOUR
-           /* Expand 12bpp->24bpp */
-           read_pixel4 	<= (dispy_odd3 && double_y && crt_look) ?
-                           { 1'b0, pal_pixel_out[11:7], {4{pal_pixel_out[8]}},
-                             1'b0, pal_pixel_out[7:5],  {4{pal_pixel_out[4]}},
-                             1'b0, pal_pixel_out[3:1],  {4{pal_pixel_out[0]}} }
-                           : { pal_pixel_out[11:8], {4{pal_pixel_out[8]}},
-                               pal_pixel_out[7:4],  {4{pal_pixel_out[4]}},
-                               pal_pixel_out[3:0],  {4{pal_pixel_out[0]}} };
+           /* Extended palette modes take RGB from read_8b_pixel_ext3 */
+           if (bpp == 3 && ext_pal) begin
+              read_pixel4 <= (dispy_odd3 && double_y && crt_look) ?
+                             { 1'b0, read_8b_pixel_ext3[23:17],
+                               1'b0, read_8b_pixel_ext3[15:9],
+                               1'b0, read_8b_pixel_ext3[7:1]}
+                             : read_8b_pixel_ext3;
+           end else begin
+              /* Expand 12bpp->24bpp */
+              read_pixel4 	<= (dispy_odd3 && double_y && crt_look) ?
+                                   { 1'b0, pal_pixel_out[11:9], {4{pal_pixel_out[9]}},
+                                       1'b0, pal_pixel_out[7:5],  {4{pal_pixel_out[5]}},
+                                       1'b0, pal_pixel_out[3:1],  {4{pal_pixel_out[1]}} }
+                                 : { pal_pixel_out[11:8], {4{pal_pixel_out[8]}},
+                                       pal_pixel_out[7:4],  {4{pal_pixel_out[4]}},
+                                       pal_pixel_out[3:0],  {4{pal_pixel_out[0]}} };
+            end
 `else
            /* Pleasant CRT-ish banding effect in linedoubled modes */
            read_pixel4  <= (dispy_odd3 && double_y && crt_look) ? { 1'b0, pal_pixel_out[11:9],
@@ -811,9 +829,9 @@ module video_timing(input wire        	     pclk,
       o_g5 <= (enable_test_card) ? tc_g4 : final_pixel_rgb[15:8];
       o_b5 <= (enable_test_card) ? tc_b4 : final_pixel_rgb[23:16];
 `else
-      o_r5 <= (enable_test_card) ? tc_r4 : {final_pixel_r[3:0], {4{final_pixel_r[3]}}};
-      o_g5 <= (enable_test_card) ? tc_g4 : {final_pixel_g[3:0], {4{final_pixel_g[3]}}};
-      o_b5 <= (enable_test_card) ? tc_b4 : {final_pixel_b[3:0], {4{final_pixel_b[3]}}};
+      o_r5 <= (enable_test_card) ? tc_r4 : {final_pixel_r[3:0], {4{final_pixel_r[0]}}};
+      o_g5 <= (enable_test_card) ? tc_g4 : {final_pixel_g[3:0], {4{final_pixel_g[0]}}};
+      o_b5 <= (enable_test_card) ? tc_b4 : {final_pixel_b[3:0], {4{final_pixel_b[0]}}};
 `endif
    end
 
