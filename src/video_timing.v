@@ -53,7 +53,7 @@ module video_timing(input wire        	     pclk,
                     input wire [10:0]        t_vert_fp,
                     input wire [10:0]        t_vert_sync_width,
                     input wire [10:0]        t_vert_bp,
-                    input wire [7:0]         t_words_per_line_m1,
+                    input wire [8:0]         t_words_per_line_m1,
                     input wire [2:0]         t_bpp,
                     input wire               t_hires,
                     input wire               t_double_x,
@@ -153,14 +153,18 @@ module video_timing(input wire        	     pclk,
     * The output scan selects a buffer based on line number, and starts a line
     * later than the input scan (so that the first buffer is full by the time the
     * display starts).
+    *
+    * Annoyingly, all modes fit into a 1024 byte line, except for mode 24 (1056).
+    * The next easy-to-address power of 2 is 2KB, wasting almost half ;(
+    * FIXME: Frugality, treat this as 3x512 buffers.
     */
-   reg [31:0] 	line_buffer[(256*2)-1:0]; // 2x 1KB buffers
+   reg [31:0] 	line_buffer[(512*2)-1:0]; // 2x 2KB buffers
 
    /* Note pulses for load_dma etc. are in the load_dma_clk
     * domain.  (This should be slower than pclk... but beware!)
     */
 
-   reg [8:0]    line_w_ptr;
+   reg [9:0]    line_w_ptr;
    reg [2:0]    dclk_sync_fb;
    wire      	flyback_falling2 = dclk_sync_fb[1] == 0 && dclk_sync_fb[2] == 1;
 
@@ -170,13 +174,13 @@ module video_timing(input wire        	     pclk,
 
       if (flyback_falling2) begin
          /* At frame start, reset to beginning of buffer 0: */
-         line_w_ptr <= 0;
+         line_w_ptr 	<= 0;
       end else if (load_dma) begin
          /* At the end of a line in, wrap to next buffer: */
-         if (line_w_ptr[7:0] != t_words_per_line_m1)
+         if (line_w_ptr[8:0] != t_words_per_line_m1)
            line_w_ptr            <= line_w_ptr + 1;
          else
-           line_w_ptr            <= {~line_w_ptr[8], 8'h00};
+           line_w_ptr            <= {~line_w_ptr[9], 9'h0};
          line_buffer[line_w_ptr] <= load_dma_data;
       end
    end
@@ -598,18 +602,18 @@ module video_timing(input wire        	     pclk,
    // Video: read and format pixel data (pipeline stages 0-1, 1-2)
 
    /* Generate video pixel address: */
-   wire [8:0]   read_line_idx = (bpp == 0) ? /* 1BPP */
-                {dispy[0], 2'b00, dispx[ctr_width_x-1:5]} :
+   wire [9:0]   read_line_idx = (bpp == 0) ? /* 1BPP */
+                {dispy[0], 3'b000, dispx[ctr_width_x-1:5]} :
                 (bpp == 1) ? /* 2BPP */
-                {dispy[0], 1'b0, dispx[ctr_width_x-1:4]} :
+                {dispy[0], 2'b00, dispx[ctr_width_x-1:4]} :
                 (bpp == 2) ? /* 4BPP */
-                {dispy[0], dispx[ctr_width_x-1:3]} :
+                {dispy[0], 1'b0, dispx[ctr_width_x-1:3]} :
 `ifdef INCLUDE_HIGH_COLOUR
                 (bpp == 3) ? /* 8BPP */
-                {dispy[0], dispx[9:2]} :
-                {dispy[0], dispx[8:1]}; /* 16BPP */
+                {dispy[0], dispx[10:2]} :
+                {dispy[0], dispx[9:1]}; /* 16BPP */
 `else
-                {dispy[0], dispx[9:2]}; /* 8BPP */
+                {dispy[0], dispx[10:2]}; /* 8BPP */
 `endif
 
    /* Read the video RAM, indexed by X scaled by BPP: */

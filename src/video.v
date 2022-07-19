@@ -95,7 +95,7 @@ module video(input wire		      clk,
    reg [10:0]           c_vs_bp;
    reg 			c_sync;
    reg                  c_hires;
-   reg [7:0]            c_wpl_m1;
+   reg [8:0]            c_wpl_m1;
    reg [2:0]            c_bpp;
    reg                  c_double_x;
    reg                  c_double_y;
@@ -178,7 +178,7 @@ module video(input wire		      clk,
                              c_sync         <= reg_wdata[0];
                              vidc_tregs_ack <= reg_wdata[2];
                      end
-                     4'h9:	c_wpl_m1                     <= reg_wdata[7:0];
+                     4'h9:	c_wpl_m1                     <= reg_wdata[8:0];
                      4'ha:	{c_hires, c_bpp, c_ext_pal,
                                  c_cursor_x_offset} <= { reg_wdata[31:27],
                                                          reg_wdata[10:0] };
@@ -212,7 +212,7 @@ module video(input wire		      clk,
                                   reg_addr[5:2] == 4'h8 ? {27'h0, c_flybk,
                                                            vidc_tregs_status, vidc_tregs_ack,
                                                            c_sync_ack, c_sync} :
-                                  reg_addr[5:2] == 4'h9 ? {24'h0, c_wpl_m1} :
+                                  reg_addr[5:2] == 4'h9 ? {23'h0, c_wpl_m1} :
                                   reg_addr[5:2] == 4'ha ? {c_hires, c_bpp, c_ext_pal, 16'h0, c_cursor_x_offset} :
                                   32'h0;
 
