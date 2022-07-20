@@ -6,9 +6,9 @@
  * with an update handshake.  The handshake synchronises the scan-out
  * to an async input flyback signal's falling edge (a bit like a genlock).
  *
- * 17 Nov 2021
+ * Started 17 Nov 2021, July 2022 major updates for performance & correctness.
  *
- * Copyright 2021 Matt Evans
+ * Copyright 2021-2022 Matt Evans
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation files
@@ -31,8 +31,17 @@
  * SOFTWARE.
  */
 
+/* High colour support means 16BPP (just muxes) and 24b palette 8BPP
+ * modes (additional palette RAM/logic).  The design can be made
+ * smaller by configuring this out.
+ */
+`define INCLUDE_HIGH_COLOUR
+/* The 16BPP high colour mode can be interpreted as a 32K colour 5:5:5
+ * or 64K colour 5:6:5 pixel.  Though it's fewer colours, the 32K
+ * version seems most useful to RISC OS/apps.
+ */
+`define HIGH_COLOUR_555_NOT_565
 
-//`define INCLUDE_HIGH_COLOUR // Not finished!
 
 module video_timing(input wire        	     pclk,
                     input wire               reset,
@@ -742,9 +751,17 @@ module video_timing(input wire        	     pclk,
    always @(posedge pclk) begin
 `ifdef INCLUDE_HIGH_COLOUR
       if (bpp == 4) begin
+ `ifdef HIGH_COLOUR_555_NOT_565
+         /* 15BPP 5:5:5 */
+         read_pixel4 <= { read_16b_pixel3[14:10], {3{read_16b_pixel3[10]}},
+                            read_16b_pixel3[9:5],  {3{read_16b_pixel3[5]}},
+                            read_16b_pixel3[4:0],   {3{read_16b_pixel3[0]}} };
+ `else
+         /* 16BPP 5:5:5 */
          read_pixel4 <= { read_16b_pixel3[15:11], {3{read_16b_pixel3[11]}},
                             read_16b_pixel3[10:5],  {2{read_16b_pixel3[5]}},
                             read_16b_pixel3[4:0],   {3{read_16b_pixel3[0]}} };
+ `endif
       end else
 `endif
         if (en_hires) begin
