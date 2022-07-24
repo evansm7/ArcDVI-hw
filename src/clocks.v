@@ -31,8 +31,58 @@ module clocks(input wire  sys_clk_in,
               output wire sys_clk
               );
 
+
 `ifndef SIM
 
+   /* Clock input of 62.5MHz is ideal as system clock, no need for a PLL: */
+   assign sys_clk = sys_clk_in;
+   wire         locked;
+
+   /* VIDC clock does want to be multiplied: */
+   generate
+      if (PIXEL_CLK_RATE == VIDC_CLK_IN_RATE) begin
+         /* 24 in, 24 out -- PLL not really necessary! */
+         SB_PLL40_CORE #(.FEEDBACK_PATH("SIMPLE"),
+		         .PLLOUT_SELECT("GENCLK"),
+		         .DIVR(4'b0000),
+		         .DIVF(7'b0011111),
+		         .DIVQ(3'b101),
+		         .FILTER_RANGE(3'b010)
+	                 ) vpll (
+		          .REFERENCECLK(vidc_clk_in),
+		          .PLLOUTCORE(pixel_clk),
+		          .LOCK(locked),
+		          .RESETB(1'b1),
+		          .BYPASS(1'b0),
+	                  );
+      end else if (PIXEL_CLK_RATE == VIDC_CLK_IN_RATE * 3.25) begin
+         SB_PLL40_CORE #(.FEEDBACK_PATH("SIMPLE"),
+		         .PLLOUT_SELECT("GENCLK"),
+		         .DIVR(4'b0000),
+		         .DIVF(7'b0011001),
+		         .DIVQ(3'b011),
+		         .FILTER_RANGE(3'b010)
+	                 ) vpll (
+		          .REFERENCECLK(vidc_clk_in),
+		          .PLLOUTCORE(pixel_clk),
+		          .LOCK(locked),
+		          .RESETB(1'b1),
+		          .BYPASS(1'b0)
+	                  );
+      end else begin
+         $error("Need PLL config for this pixel rate");
+         /* FIXME: Pass parameters from build */
+         /* FIXME: Dynamic reconfiguration! */
+      end
+   endgenerate
+
+`else // !`ifndef SIM
+
+   /* Testbench can make the input clocks something interesting,
+    * so they don't need special treatment here.
+    */
+   assign       sys_clk = sys_clk_in;
+   assign       pixel_clk = vidc_clk_in;
 `endif // !`ifndef SIM
 
 endmodule // clocks

@@ -1,0 +1,87 @@
+# Syntax is "set_io <signal name> <package pin>"
+# Note the pin is the real package pin, not the "IOT_123"-style label.
+
+# ArcDVI v1.0 HX4K TQFP144
+
+set_io  clk_in          49
+set_io  led             37
+
+set_io  v_clk           20
+set_io  v_hsync         1
+set_io  v_vsync         2
+set_io  v_de            3
+set_io  v_rgb[0]        25
+set_io  v_rgb[1]        26
+set_io  v_rgb[2]        28
+set_io  v_rgb[3]        29
+set_io  v_rgb[4]        31
+set_io  v_rgb[5]        32
+set_io  v_rgb[6]        33
+set_io  v_rgb[7]        34
+set_io  v_rgb[8]        16
+set_io  v_rgb[9]        17
+set_io  v_rgb[10]       18
+set_io  v_rgb[11]       19
+set_io  v_rgb[12]       21
+set_io  v_rgb[13]       22
+set_io  v_rgb[14]       23
+set_io  v_rgb[15]       24
+set_io  v_rgb[16]       4
+set_io  v_rgb[17]       7
+set_io  v_rgb[18]       8
+set_io  v_rgb[19]       9
+set_io  v_rgb[20]       10
+set_io  v_rgb[21]       11
+set_io  v_rgb[22]       12
+set_io  v_rgb[23]       15
+
+# SPI from MCU:
+set_io  spi_clk         70
+set_io  spi_ncs         71
+set_io  spi_din         68
+set_io  spi_dout        67
+
+set_io	vidc_nvidak	73
+set_io	vidc_nsndak	74
+set_io	vidc_ckin	93
+set_io	vidc_flybk	75
+set_io	vidc_nvidrq	78
+set_io	vidc_nsndrq	76
+
+set_io	vidc_nhs	79
+set_io	vidc_nvcs	80
+set_io	vidc_nvidw	81
+
+set_io	vidc_d[0]	104
+set_io	vidc_d[1]	105
+set_io	vidc_d[2]	106
+set_io	vidc_d[3]	107
+set_io	vidc_d[4]	110
+set_io	vidc_d[5]	112
+set_io	vidc_d[6]	113
+set_io	vidc_d[7]	114
+set_io	vidc_d[8]	115
+set_io	vidc_d[9]	116
+set_io	vidc_d[10]	117
+set_io	vidc_d[11]	118
+set_io	vidc_d[12]	119
+set_io	vidc_d[13]	120
+set_io	vidc_d[14]	121
+set_io	vidc_d[15]	122
+set_io	vidc_d[16]	82
+set_io	vidc_d[17]	83
+set_io	vidc_d[18]	84
+set_io	vidc_d[19]	85
+set_io	vidc_d[20]	87
+set_io	vidc_d[21]	88
+set_io	vidc_d[22]	90
+set_io	vidc_d[23]	91
+set_io	vidc_d[24]	94
+set_io	vidc_d[25]	95
+set_io	vidc_d[26]	96
+set_io	vidc_d[27]	97
+set_io	vidc_d[28]	98
+set_io	vidc_d[29]	99
+set_io	vidc_d[30]	101
+set_io	vidc_d[31]	102
+

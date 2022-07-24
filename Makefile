@@ -6,16 +6,17 @@
 
 HIRES_MODE ?= 0
 
-VERILOG_FILES =
+VERILOG_FILES = src/soc_top_arcdvi.v
 VERILOG_FILES += src/vidc_capture.v
 VERILOG_FILES += src/video.v
 VERILOG_FILES += src/video_timing.v
 VERILOG_FILES += src/clocks.v
+VERILOG_FILES += src/spir.v
 
-ARCDVI_TOP_MODULE = soc_top
+ARCDVI_TOP_MODULE = soc_top_arcdvi
 
 
-all:	tb_top.wave
+all:	tb_top_arcdvi.wave
 
 clean:
 	rm -f *~ src/*~ tb/*~ *.vvp *.vcd *.bit *.asc *.json
@@ -37,10 +38,10 @@ IVOPTS += $(VDEFS)
 
 
 .PHONY: wave
-wave:	tb_top.wave
+wave:	tb_top_arcdvi.wave
 
 .PHONY:	sim
-sim:	tb_top.vcd
+sim:	tb_top_arcdvi.vcd
 
 %.vcd:	%.vvp
 	vvp $<
