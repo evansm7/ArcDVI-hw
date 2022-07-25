@@ -34,7 +34,7 @@ ArcDVI: fit more obsolete equipment on your desk by using flat-panel displays!  
 
 ## How it works
 
-![Architecture diagram](doc/ArcDVI-arch.svg)
+![Architecture diagram](docs/ArcDVI-arch.svg)
 
 First, the VIDC signals are converted to 3.3V.  The FPGA samples the data bus `D[31:0]` and `/VIDW` strobe to capture configuration register writes.  (The VIDC is write-only!)  VIDC registers are mirrored internally and provide screen timings, the cursor (pointer) position, and palette entries.
 
