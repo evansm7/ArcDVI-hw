@@ -36,6 +36,8 @@ module soc_top_test(input wire         clk_in,
                     output wire        v_de,
                     output wire [23:0] v_rgb,
 
+		    output wire        v_cec_clk,
+
                     input wire 	       spi_clk,
                     input wire 	       spi_ncs,
                     input wire 	       spi_din,
@@ -95,6 +97,13 @@ module soc_top_test(input wire         clk_in,
 	          );
 `endif
 
+   /* Output v_cec_clk as sysclk/2 */
+   reg 					 vcclk;
+   always @(posedge clk)
+     vcclk <= ~vcclk;
+   assign v_cec_clk = vcclk;
+
+   /* Resets */
    wire 		   reset;
    reg [1:0]               resetc; // assume start at 0?
    initial begin
