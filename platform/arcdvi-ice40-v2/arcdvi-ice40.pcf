@@ -88,3 +88,10 @@ set_io	vidc_d[29]	110
 set_io	vidc_d[30]	112
 set_io	vidc_d[31]	113
 
+# Test pads
+set_io  TP14            139
+set_io  TP13            138
+set_io  TP12            137
+set_io  TP11            130
+set_io  TP10            129
+set_io  TP9             128

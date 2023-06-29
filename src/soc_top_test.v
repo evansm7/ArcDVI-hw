@@ -38,21 +38,28 @@ module soc_top_test(input wire         clk_in,
 
 		    output wire        v_cec_clk,
 
-                    input wire 	       spi_clk,
-                    input wire 	       spi_ncs,
-                    input wire 	       spi_din,
+                    input wire         spi_clk,
+                    input wire         spi_ncs,
+                    input wire         spi_din,
                     output wire        spi_dout,
 
+                    output wire        TP9,
+                    output wire        TP10,
+                    output wire        TP11,
+                    output wire        TP12,
+                    output wire        TP13,
+                    output wire        TP14,
+
                     input wire [31:0]  vidc_d,
-                    input wire 	       vidc_nvidw,
-                    input wire 	       vidc_nvcs,
-                    input wire 	       vidc_nhs,
-                    input wire 	       vidc_nsndrq,
-                    input wire 	       vidc_nvidrq,
-                    input wire 	       vidc_flybk,
-                    input wire 	       vidc_ckin,
-                    input wire 	       vidc_nsndak,
-                    input wire 	       vidc_nvidak
+                    input wire         vidc_nvidw,
+                    input wire         vidc_nvcs,
+                    input wire         vidc_nhs,
+                    input wire         vidc_nsndrq,
+                    input wire         vidc_nvidrq,
+                    input wire         vidc_flybk,
+                    input wire         vidc_ckin,
+                    input wire         vidc_nsndak,
+                    input wire         vidc_nvidak
                     );
 
    parameter CLK_RATE = 62500000;
