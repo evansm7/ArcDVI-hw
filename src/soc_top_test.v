@@ -219,6 +219,16 @@ module soc_top_test(input wire         clk_in,
    /////////////////////////////////////////////////////////////////////////////
    // Video output control regs, timing/pixel generator:
 
+   /* Hack: rather than disabling the sync-to-VIDC logic, just sync to
+    * a handy constantly-moving signal...
+    */
+   reg [4:0] ctr;
+   always @(posedge clk) begin
+      ctr <= ctr + 1;
+      if (reset)
+	ctr <= 5'h0;
+   end
+
    wire [31:0] 		   video_reg_rd;
 
    video VIDEO(.clk(clk),
@@ -258,10 +268,7 @@ module soc_top_test(input wire         clk_in,
 
                .enable_test_card(1'b1),
 
-	       /* Hack: rather than disabling the sync-to-VIDC logic, just sync to
-		* a handy constantly-moving signal...
-		*/
-               .sync_flybk(pclk)
+               .sync_flybk(ctr[4])
                );
 
 
