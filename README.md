@@ -1,19 +1,18 @@
 # ArcDVI-hw: Digital video output for the Acorn Archimedes
 
-25 July 2022
+2 July 2023
 
 ArcDVI is a hardware add-on allowing Acorn Archimedes computers to output video via DVI.  Retrocompute on a _quality_ monitor! :)
 
 The ArcDVI project comprises several parts:
-
-   * The [PCB designs](https://github.com/evansm7/ArcDVI-PCB), which contain an FPGA and microcontroller
+   * The [main PCB](https://github.com/evansm7/ArcDVI-PCB-main), and either an [interposer](https://github.com/evansm7/ArcDVI-PCB-VIDC-skt) that holds VIDC in socketed machines (e.g. A440), or a [clip-over](https://github.com/evansm7/ArcDVI-PCB-VIDC) board for machines in which VIDC is soldered down (e.g. A3000)
    * The [FPGA design](https://github.com/evansm7/ArcDVI-hw) (__This repo__)
    * The microcontroller [firmware](https://github.com/evansm7/ArcDVI-fw)
    * Optional extension/test [software](https://github.com/evansm7/ArcDVI-sw) for RISC OS
 
 ## What ArcDVI does
 
-ArcDVI passively observes the signals to the VIDC chip in-circuit, and reconstructs the video display from VIDC's DMA requests.  The video data is output digitally on DVI. 
+ArcDVI passively observes the signals to the VIDC chip in-circuit, and reconstructs the video display from VIDC's DMA requests.  The video data is output digitally on DVI.
 
 ArcDVI doesn't require software support, but a mode extension module is available to add high-colour and extended palette modes to RISC OS.
 
@@ -93,6 +92,14 @@ make bitstream
 ```
 The resulting `arcdvi-ice40.bit` file should be integrated into the firmware build, for FPGA programming upon system initialisation.
 
+For board bring-up, a test build is provided...
+
+```
+make bitstream TARGET=test
+```
+
+The test bitstream is standalone and can generate DVI display/test patterns without needing to be plugged into an Arc.  This is good to verify soldering.  It also displays a pattern of stripes which correspond to the sampled VIDC inputs, which are (again) useful to verify all inputs are mobile/not stuck.
+
 
 ## Status/what works
 
@@ -116,7 +123,7 @@ ArcDVI expands the colour capabilities beyond the base VIDC features:
     * Two special "hidden" registers are added at VIDC reserved addresses `0x50`/`0x54`.  (In VIDC, these reserved locations alias to the adjacent border/cursor palette registers, which are benign to write.)  The second location is a data payload, and the first is an "operation" trigger.  By writing a 24-bit `0x0000ii` operation value to `0x50`, palette entry `ii` is written with the `0xBBGGRR` value previously loaded into the `0x54` payload.
     * 256 greys look great!
    * A BGR555/32K colour configuration is supported: another Control Register bit enables 16BPP output.  Typically, VIDC is programmed with an 8BPP mode X by Y, and the ArcDVI firmware displays this as (X/2) by Y at 16BPP.
-   
+
 A custom mode RISC OS module provides 32K colour and Extended Palette 256 colour modes.
 
 
@@ -138,5 +145,5 @@ A custom mode RISC OS module provides 32K colour and Extended Palette 256 colour
 
 ## Copyrights & licence
 
-All sources are copyright 2021-2022 Matt Evans, and provided under the MIT licence.
+All sources are copyright 2021-2023 Matt Evans, and provided under the MIT licence.
 
