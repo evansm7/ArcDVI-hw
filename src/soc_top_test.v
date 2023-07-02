@@ -236,6 +236,18 @@ module soc_top_test(input wire         clk_in,
 	ctr <= 5'h0;
    end
 
+   wire [63:0] debug_sigs = { 23'h0,
+                              vidc_d,	  // + 32
+                              vidc_nvidw, // +9
+                              vidc_nvcs,
+                              vidc_nhs,
+                              vidc_nsndrq,
+                              vidc_nvidrq,
+                              vidc_flybk,
+                              vidc_ckin,
+                              vidc_nsndak,
+                              vidc_nvidak };
+
    wire [31:0] 		   video_reg_rd;
 
    video VIDEO(.clk(clk),
@@ -274,6 +286,7 @@ module soc_top_test(input wire         clk_in,
                .video_de(v_de),
 
                .enable_test_card(1'b1),
+               .test_card_data(debug_sigs),
 
                .sync_flybk(ctr[4])
                );

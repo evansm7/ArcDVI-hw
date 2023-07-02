@@ -26,6 +26,7 @@
  */
 
 module video_test_pattern(input wire pclk,
+                          input wire [63:0] data,
                           input wire [10:0] px,
                           input wire [10:0] py,
                           input wire [10:0] xstart,
@@ -48,16 +49,36 @@ module video_test_pattern(input wire pclk,
    reg [7:0]    tc_g3;
    reg [7:0]    tc_b3;
 
+   reg [63:0]   data_r;
+
    wire      	stripex = (px == xstart) ||
                 (px == xend) || (px[7:0] == 8'h00);
    wire      	stripey = (py == ystart) ||
                 (py == yend) || (py[7:0] == 8'h00);
    wire [7:0]   stripe = (stripex || stripey) ? 8'hff : 8'h0;
 
+   reg [10:0]   xoff;
+   /* Data area is 64 bits made from 8 pixels each in X
+    * (i.e. 512px wide), black/white dots, with a coloured
+    * key below it.
+    */
+   wire 	disp_data = (xoff < 512) && (py >= 320) &&
+                (py < (320+64));
+   wire [5:0]   disp_bit = xoff[8:3];
+   wire	[1:0]	disp_value = (py < (320+32)) ?
+                (data_r[disp_bit] ? 2'b01 : 2'b00) :
+                xoff[3] ? 2'b11 : 2'b10;
+   wire [7:0]   disp_col   = disp_value == 2'b00 ? {2'h0, px[5:0]} :
+                disp_value == 2'b01 ? 8'hff :
+                disp_value == 2'b10 ? 8'h40 : 8'h80;
+
    always @(posedge pclk) begin
-      tc_r1 	<= px[7:0] | stripe;
-      tc_g1 	<= py[7:0] | stripe;
-      tc_b1 	<= (px[8:1] ^ py[8:1]) | stripe;
+      data_r    <= data;
+      xoff      <= px - xstart;
+
+      tc_r1 	<= disp_data ? disp_col : (px[7:0] | stripe);
+      tc_g1 	<= disp_data ? disp_col : (py[7:0] | stripe);
+      tc_b1 	<= disp_data ? disp_col : ((px[8:1] ^ py[8:1]) | stripe);
 
       tc_r2 	<= tc_r1;
       tc_g2 	<= tc_g1;

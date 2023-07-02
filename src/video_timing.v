@@ -95,7 +95,8 @@ module video_timing(input wire        	     pclk,
                     input wire               config_sync_req,
                     output reg               config_sync_ack,
 
-                    input wire               enable_test_card
+                    input wire               enable_test_card,
+                    input wire [63:0]        test_card_data
                     );
 
    parameter ctr_width_x	= 11;
@@ -153,9 +154,8 @@ module video_timing(input wire        	     pclk,
       end
    end // always @ (posedge pclk)
 
-
    ////////////////////////////////////////////////////////////////////////////////
-   // Videp input line buffer
+   // Video input line buffer
 
    /* Buffer 0 is used for line 0, 2, 4, etc., buffer 1 used for line 1, 3, 5, etc.
     * The input DMA is written to buffer 0 first, then wrapping to alternate buffers.
@@ -511,6 +511,7 @@ module video_timing(input wire        	     pclk,
    wire [7:0]   tc_b4;
 
    video_test_pattern VTP(.pclk(pclk),
+                          .data(test_card_data),
                           .px(px),
                           .py(py),
                           .xstart(ti_h_disp_start+1),
