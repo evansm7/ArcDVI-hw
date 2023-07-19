@@ -329,7 +329,6 @@ module soc_top_arcdvi(input wire         clk_in,
                .video_vsync(v_vsync),
                .video_de(v_de),
 
-               .enable_test_card(1'b0),
                .test_card_data(64'h0),
 
                .sync_flybk(vidc_flybk),

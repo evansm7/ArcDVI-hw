@@ -72,7 +72,6 @@ module video(input wire		      clk,
              output wire              video_de,
 
              // DMA clock-related signals
-             input wire               enable_test_card,
              input wire [63:0]        test_card_data,
 
              // Async
@@ -276,7 +275,6 @@ module video(input wire		      clk,
                     .config_sync_req(c_sync),
                     .config_sync_ack(c_sync_ack_p),
 
-                    .enable_test_card(enable_test_card),
                     .test_card_data(test_card_data)
                     );
 

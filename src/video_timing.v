@@ -95,7 +95,6 @@ module video_timing(input wire        	     pclk,
                     input wire               config_sync_req,
                     output reg               config_sync_ack,
 
-                    input wire               enable_test_card,
                     input wire [63:0]        test_card_data
                     );
 
@@ -506,6 +505,7 @@ module video_timing(input wire        	     pclk,
    ////////////////////////////////////////////////////////////////////////////////
    // Test image generator
 
+`ifdef TEST_BUILD
    wire [7:0] 	tc_r4;
    wire [7:0] 	tc_g4;
    wire [7:0]   tc_b4;
@@ -522,7 +522,7 @@ module video_timing(input wire        	     pclk,
                           .g(tc_g4),
                           .b(tc_b4)
                           );
-
+`endif
 
    ////////////////////////////////////////////////////////////////////////////////
    // Cursor video data (pipeline stages 0-1, 1-2, 2-3, 3-4)
@@ -846,14 +846,20 @@ module video_timing(input wire        	     pclk,
 
    always @(posedge pclk) begin
       /* Select between test card & 4-to-8 expanded video data: */
-`ifdef INCLUDE_HIGH_COLOUR
-      o_r5 <= (enable_test_card) ? tc_r4 : final_pixel_rgb[7:0];
-      o_g5 <= (enable_test_card) ? tc_g4 : final_pixel_rgb[15:8];
-      o_b5 <= (enable_test_card) ? tc_b4 : final_pixel_rgb[23:16];
+`ifdef TEST_BUILD
+      o_r5 <= tc_r4;
+      o_g5 <= tc_g4;
+      o_b5 <= tc_b4;
 `else
-      o_r5 <= (enable_test_card) ? tc_r4 : {final_pixel_r[3:0], {4{final_pixel_r[0]}}};
-      o_g5 <= (enable_test_card) ? tc_g4 : {final_pixel_g[3:0], {4{final_pixel_g[0]}}};
-      o_b5 <= (enable_test_card) ? tc_b4 : {final_pixel_b[3:0], {4{final_pixel_b[0]}}};
+`ifdef INCLUDE_HIGH_COLOUR
+      o_r5 <= final_pixel_rgb[7:0];
+      o_g5 <= final_pixel_rgb[15:8];
+      o_b5 <= final_pixel_rgb[23:16];
+`else
+      o_r5 <= {final_pixel_r[3:0], {4{final_pixel_r[0]}}};
+      o_g5 <= {final_pixel_g[3:0], {4{final_pixel_g[0]}}};
+      o_b5 <= {final_pixel_b[3:0], {4{final_pixel_b[0]}}};
+`endif
 `endif
    end
 

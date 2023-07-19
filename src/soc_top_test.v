@@ -285,7 +285,6 @@ module soc_top_test(input wire         clk_in,
                .video_vsync(v_vsync),
                .video_de(v_de),
 
-               .enable_test_card(1'b1),
                .test_card_data(debug_sigs),
 
                .sync_flybk(ctr[4])
