@@ -754,14 +754,14 @@ module video_timing(input wire        	     pclk,
       if (bpp == 4) begin
  `ifdef HIGH_COLOUR_555_NOT_565
          /* 15BPP 5:5:5 */
-         read_pixel4 <= { read_16b_pixel3[14:10], {3{read_16b_pixel3[10]}},
-                            read_16b_pixel3[9:5],  {3{read_16b_pixel3[5]}},
-                            read_16b_pixel3[4:0],   {3{read_16b_pixel3[0]}} };
+         read_pixel4 <= { read_16b_pixel3[14:10], read_16b_pixel3[14:12],
+                            read_16b_pixel3[9:5], read_16b_pixel3[9:7],
+                            read_16b_pixel3[4:0], read_16b_pixel3[4:2] };
  `else
          /* 16BPP 5:5:5 */
-         read_pixel4 <= { read_16b_pixel3[15:11], {3{read_16b_pixel3[11]}},
-                            read_16b_pixel3[10:5],  {2{read_16b_pixel3[5]}},
-                            read_16b_pixel3[4:0],   {3{read_16b_pixel3[0]}} };
+         read_pixel4 <= { read_16b_pixel3[15:11], read_16b_pixel3[15:13],
+                           read_16b_pixel3[10:5], read_16b_pixel3[10:9],
+                            read_16b_pixel3[4:0], read_16b_pixel3[4:2] };
  `endif
       end else
 `endif
