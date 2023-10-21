@@ -164,6 +164,11 @@ module tb_top_arcdvi();
       spi_rd(12'h015, v);
       $display("VIDC special1 = %x", v);
 
+      v = 32'h00000001;		/* pclk_reset=1 */
+      spi_wr(12'hc01, v);
+      v = 32'h00000000;		/* pclk_reset=0 */
+      spi_wr(12'hc01, v);
+
       #(`CLK*3000000);
 
       $display("Done.");
